@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI playground</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+    min-height: 100vh;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    background: #0a0a0a;
+    color: #e0e0e0;
+}
+
+header {
+    padding: 48px 32px 24px;
+    text-align: center;
+}
+header h1 {
+    font-size: 1.6rem;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    color: #5e9cff;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 16px 32px 64px;
+}
+
+a.card {
+    display: block;
+    text-decoration: none;
+    background: #111;
+    border: 1px solid #1a1a1a;
+    border-radius: 10px;
+    padding: 24px;
+    transition: border-color 0.2s, background 0.2s;
+}
+a.card:hover {
+    border-color: #333;
+    background: #151515;
+}
+
+.card .title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #e0e0e0;
+    margin-bottom: 6px;
+}
+.card .path {
+    font-size: 0.7rem;
+    color: #444;
+}
+</style>
+</head>
+<body>
+
+<header>
+    <h1>AI playground</h1>
+</header>
+
+<div class="grid">
+
+    <a class="card" href="demo_lr.html">
+        <div class="title">Regressione Lineare</div>
+        <div class="path">demo_lr.html</div>
+    </a>
+
+    <a class="card" href="demo_lr_loss.html">
+        <div class="title">Loss Surface &amp; GD Trajectory</div>
+        <div class="path">demo_lr_loss.html</div>
+    </a>
+
+    <a class="card" href="derivative.html">
+        <div class="title">Derivative</div>
+        <div class="path">derivative.html</div>
+    </a>
+
+    <a class="card" href="gd_live.html">
+        <div class="title">Gradient Descent Interattivo</div>
+        <div class="path">gd_live.html</div>
+    </a>
+
+    <a class="card" href="gd_live_3d.html">
+        <div class="title">Gradient Descent 3D</div>
+        <div class="path">gd_live_3d.html</div>
+    </a>
+
+    <a class="card" href="grad.html">
+        <div class="title">Gradient 3D — ∇f(x,y) = x² + y²</div>
+        <div class="path">grad.html</div>
+    </a>
+
+    <a class="card" href="logic.html">
+        <div class="title">logic gates demo</div>
+        <div class="path">logic.html</div>
+    </a>
+
+    <a class="card" href="mnist_live.html">
+        <div class="title">MNIST live demo (Pyodide)</div>
+        <div class="path">mnist_live.html</div>
+    </a>
+
+    <a class="card" href="neuron.html">
+        <div class="title">Significato geometrico del neurone</div>
+        <div class="path">neuron.html</div>
+    </a>
+
+    <a class="card" href="vacanze_live.html">
+        <div class="title">Preferenze Vacanziere (cosine similarity)</div>
+        <div class="path">vacanze_live.html</div>
+    </a>
+
+    <a class="card" href="xor.html">
+        <div class="title">ML compiler demo</div>
+        <div class="path">xor.html</div>
+    </a>
+
+    <a class="card" href="xor.template.html">
+        <div class="title">ML compiler demo</div>
+        <div class="path">xor.template.html</div>
+    </a>
+
+    <a class="card" href="xor_live.html">
+        <div class="title">live compiler demo (Pyodide)</div>
+        <div class="path">xor_live.html</div>
+    </a>
+
+</div>
+
+</body>
+</html>

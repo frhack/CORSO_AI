@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dx — Regressione Lineare</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0d1117; color: #c9d1d9;
+    min-height: 100vh;
+}
+.controls { display: flex; gap: 8px; align-items: center; }
+button {
+    background: #238636; color: #fff; border: none; border-radius: 6px;
+    padding: 7px 20px; font-size: 13px; font-weight: 600; cursor: pointer;
+    transition: background 0.15s;
+}
+button:hover { background: #2ea043; }
+button:disabled { background: #21262d; color: #8b949e; cursor: not-allowed; }
+select {
+    background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+    border-radius: 6px; padding: 6px 10px; font-size: 12px; cursor: pointer;
+}
+main {
+    display: grid; grid-template-columns: 380px 1fr;
+    height: 100vh;
+}
+@media (max-width: 900px) {
+    main { grid-template-columns: 1fr; }
+    .code-panel { max-height: 40vh; }
+}
+.code-panel {
+    border-right: 1px solid #21262d; overflow: auto; padding: 0;
+    background: #0d1117;
+}
+.source-code {
+    font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Menlo', 'Consolas', monospace;
+    font-size: 13px; line-height: 1.0; padding: 12px 16px;
+    white-space: pre; overflow-x: auto; tab-size: 4;
+    counter-reset: line;
+}
+.source-code .line { display: block; }
+.source-code .line::before {
+    counter-increment: line; content: counter(line);
+    display: inline-block; width: 24px; margin-right: 16px;
+    text-align: right; color: #8b949e; font-size: 11px;
+}
+.kw { color: #ff7b72; }
+.ty { color: #79c0ff; }
+.fn { color: #d2a8ff; }
+.num { color: #79c0ff; }
+.str { color: #a5d6ff; }
+.cm { color: #8b949e; font-style: italic; }
+.pr { color: #ffa657; font-weight: 600; }
+.op { color: #ff7b72; }
+.viz-panel {
+    padding: 16px; display: flex; flex-direction: column; gap: 12px;
+    overflow: auto;
+}
+.stats-bar {
+    display: flex; gap: 32px; padding: 8px 0;
+}
+.stat .label { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; }
+.stat .value { font-size: 22px; font-weight: 700; color: #58a6ff; font-variant-numeric: tabular-nums; }
+.canvas-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.card {
+    background: #161b22; border: 1px solid #21262d; border-radius: 8px;
+    padding: 12px; display: flex; flex-direction: column; gap: 8px;
+}
+.card-title {
+    font-size: 11px; color: #8b949e; text-transform: uppercase;
+    letter-spacing: 1px;
+}
+canvas { border-radius: 4px; width: 100%; aspect-ratio: 4/3; display: block; background: #0d1117; }
+
+/* Gradient panel */
+.grad-panel {
+    font-family: 'SF Mono', 'JetBrains Mono', monospace; font-size: 13px;
+}
+.grad-equation {
+    font-size: 16px; font-weight: 700; color: #e6edf3; margin-bottom: 8px;
+    letter-spacing: 0.5px;
+}
+.grad-table {
+    width: 100%; border-collapse: collapse;
+}
+.grad-table th {
+    font-size: 10px; color: #8b949e; text-transform: uppercase; letter-spacing: 1px;
+    text-align: left; padding: 4px 8px; border-bottom: 1px solid #21262d;
+    font-weight: 400;
+}
+.grad-table td {
+    padding: 5px 8px; font-variant-numeric: tabular-nums;
+}
+.grad-table .param-name { color: #79c0ff; font-weight: 600; }
+.grad-table .param-val { color: #e6edf3; }
+.grad-table .grad-val { font-weight: 600; }
+.grad-table .delta-val { font-size: 11px; }
+.grad-rule {
+    margin-top: 8px; font-size: 11px; color: #8b949e;
+}
+.grad-rule span { color: #8b949e; }
+
+/* Predict slider */
+.predict-row {
+    display: flex; align-items: center; gap: 12px;
+    font-family: 'SF Mono', 'JetBrains Mono', monospace; font-size: 13px;
+}
+.predict-row input[type=range] {
+    flex: 1; accent-color: #58a6ff;
+}
+.predict-result {
+    font-size: 20px; font-weight: 700; color: #58a6ff;
+    min-width: 50px; text-align: right;
+}
+.predict-label { color: #8b949e; min-width: 80px; }
+
+.console-out {
+    font-family: 'SF Mono', 'JetBrains Mono', monospace;
+    font-size: 11px; line-height: 1.5; color: #8b949e;
+    max-height: 80px; overflow-y: auto; white-space: pre;
+    padding: 8px; background: #0d1117; border-radius: 4px;
+    border: 1px solid #21262d;
+}
+</style>
+</head>
+<body>
+
+<main>
+    <section class="code-panel">
+        <div class="source-code" id="source-code"></div>
+    </section>
+
+    <section class="viz-panel">
+        <div class="controls">
+            <button id="btn-train">Train</button>
+            <select id="speed">
+                <option value="5">5 ep/frame</option>
+                <option value="20" selected>20 ep/frame</option>
+                <option value="100">100 ep/frame</option>
+            </select>
+        </div>
+
+        <div class="stats-bar">
+            <div class="stat">
+                <div class="label">Epoch</div>
+                <div class="value" id="stat-epoch">0</div>
+            </div>
+            <div class="stat">
+                <div class="label">Loss</div>
+                <div class="value" id="stat-loss">&mdash;</div>
+            </div>
+            <div class="stat">
+                <div class="label">Params</div>
+                <div class="value">2</div>
+            </div>
+            <div class="stat">
+                <div class="label">Status</div>
+                <div class="value" id="stat-status" style="color:#8b949e">Ready</div>
+            </div>
+        </div>
+
+        <div class="canvas-row">
+            <div class="card">
+                <div class="card-title">Dati &amp; Regressione</div>
+                <canvas id="cv-scatter"></canvas>
+            </div>
+            <div class="card">
+                <div class="card-title">Discesa del Gradiente</div>
+                <div class="grad-panel">
+                    <div class="grad-equation" id="grad-eq">&#x177; = w &middot; x + b</div>
+                    <table class="grad-table">
+                        <thead>
+                            <tr><th>Peso</th><th>Valore</th><th>Gradiente</th><th>&Delta;</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="param-name">w</td>
+                                <td class="param-val" id="val-w">&mdash;</td>
+                                <td class="grad-val" id="grad-w">&mdash;</td>
+                                <td class="delta-val" id="delta-w">&mdash;</td>
+                            </tr>
+                            <tr>
+                                <td class="param-name">b</td>
+                                <td class="param-val" id="val-b">&mdash;</td>
+                                <td class="grad-val" id="grad-b">&mdash;</td>
+                                <td class="delta-val" id="delta-b">&mdash;</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div class="grad-rule">
+                        Regola: <span>&theta; &larr; &theta; &minus; lr &middot; &part;L/&part;&theta;</span> &nbsp; (lr = 0.001)
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="canvas-row">
+            <div class="card">
+                <div class="card-title">Loss Curve</div>
+                <canvas id="cv-loss"></canvas>
+            </div>
+            <div class="card">
+                <div class="card-title">Predizione</div>
+                <div style="padding: 12px 0; display: flex; flex-direction: column; gap: 12px;">
+                    <div class="predict-row">
+                        <span class="predict-label">Ore studio:</span>
+                        <input type="range" id="pred-slider" min="0" max="12" step="0.5" value="6">
+                        <span id="pred-hours" style="color:#e6edf3; min-width:30px;">6</span>
+                    </div>
+                    <div class="predict-row">
+                        <span class="predict-label">Voto previsto:</span>
+                        <span class="predict-result" id="pred-result">&mdash;</span>
+                    </div>
+                    <div style="font-size: 11px; color: #8b949e; margin-top: 4px;">
+                        Trascina il cursore per prevedere il voto in Fisica in base alle ore di studio.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Console</div>
+            <div class="console-out" id="console-out"></div>
+        </div>
+    </section>
+</main>
+
+<script>
+// ================================================================
+// DX SOURCE CODE
+// ================================================================
+const DX_SOURCE = `type LinReg
+    w : Tensor[1 1]
+    b : Vec[1]
+
+fun LinReg'apply(x: Vec[1]) -> Vec[1]
+    me'w o x + me'b
+
+model : LinReg(nn'init_normal(0.1))
+lr : 0.001
+
+X : [ [1] [2] [3] [4]
+      [5] [7] [8] [10] ]
+
+Y : [ [3.0] [4.5] [4.0] [5.5]
+      [6.0] [7.0] [8.5] [9.0] ]
+
+for epoch in 0..2000
+    total_loss : 0.0
+    for (x y) in X'zip(Y)
+        pred : model(x)
+        loss : mse(pred, y)
+        grads : d loss / d model'params
+        model'params : model'params - lr * grads
+        total_loss : total_loss + loss
+    if epoch % 500 = 0
+        print("epoch {epoch}  loss {total_loss}")
+
+for (x y) in X'zip(Y)
+    pred : model(x)
+    print("{pred}")`;
+
+// ================================================================
+// SYNTAX HIGHLIGHTER
+// ================================================================
+function highlightDx(code) {
+    let h = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const lines = h.split('\n');
+    return lines.map(line => {
+        const cmIdx = line.indexOf('--');
+        let code_part = cmIdx >= 0 ? line.slice(0, cmIdx) : line;
+        let cm_part = cmIdx >= 0 ? '<span class="cm">' + line.slice(cmIdx) + '</span>' : '';
+        code_part = code_part.replace(/(&quot;[^&]*?&quot;|"[^"]*?")/g, '<span class="str">$1</span>');
+        code_part = code_part.replace(/\b(type|fun|for|if|in|print|arena|let|return)\b/g, '<span class="kw">$1</span>');
+        code_part = code_part.replace(/\b(LinReg|Net|Vec|Tensor|Float|Int|String)\b/g, '<span class="ty">$1</span>');
+        code_part = code_part.replace(/\b(it|me)\b/g, '<span class="pr">$1</span>');
+        code_part = code_part.replace(/\b(nn|mse|sigmoid|relu|softmax|gelu)\b/g, '<span class="fn">$1</span>');
+        code_part = code_part.replace(/\b(d)\s+(model|net)/g, '<span class="op">$1</span> $2');
+        code_part = code_part.replace(/ \. /g, ' \u00b7 ');
+        code_part = code_part.replace(/\b(\d+\.?\d*)\b/g, '<span class="num">$1</span>');
+        return '<span class="line">' + code_part + cm_part + '</span>';
+    }).join('\n');
+}
+
+// ================================================================
+// RUNTIME
+// ================================================================
+let _rx = 123456789, _ry = 362436069, _rz = 521288629, _rw = 88675123;
+function RngSeed(s) {
+    s = s | 0; _rx = s;
+    _ry = Math.imul(s, 48271) | 0; if (_ry === 0) _ry = 362436069;
+    _rz = Math.imul(_ry, 48271) | 0; if (_rz === 0) _rz = 521288629;
+    _rw = Math.imul(_rz, 48271) | 0; if (_rw === 0) _rw = 88675123;
+}
+function RngNext() {
+    let t = _rx ^ ((_rx << 11) | 0);
+    _rx = _ry; _ry = _rz; _rz = _rw;
+    _rw = (_rw ^ (_rw >>> 19) ^ (t ^ (t >>> 8))) | 0;
+    return _rw;
+}
+function RngFloat() { return (RngNext() >>> 0) / 4294967296.0; }
+function RngNormal() {
+    let u1, u2;
+    do { u1 = RngFloat(); } while (u1 === 0.0);
+    u2 = RngFloat();
+    return Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(6.2831853 * u2);
+}
+
+function Matmul(W, x, out, M, N) {
+    for (let i = 0; i < M; i++) {
+        let s = 0.0;
+        for (let j = 0; j < N; j++) s += W[i * N + j] * x[j];
+        out[i] = s;
+    }
+}
+function MatmulTranspose(W, x, out, M, N) {
+    out.fill(0);
+    for (let i = 0; i < M; i++)
+        for (let j = 0; j < N; j++) out[j] += W[i * N + j] * x[i];
+}
+function OuterProductAdd(a, b, out, M, N) {
+    for (let i = 0; i < M; i++)
+        for (let j = 0; j < N; j++) out[i * N + j] += a[i] * b[j];
+}
+function VecAdd(a, b, out, N) {
+    for (let i = 0; i < N; i++) out[i] = a[i] + b[i];
+}
+function MseForward(pred, target, N) {
+    let s = 0.0;
+    for (let i = 0; i < N; i++) { const d = pred[i] - target[i]; s += d * d; }
+    return s / N;
+}
+function MseBackward(pred, target, dPred, N) {
+    for (let i = 0; i < N; i++) dPred[i] = 2.0 * (pred[i] - target[i]) / N;
+}
+function SgdStep(params, grads, n, lr) {
+    for (let i = 0; i < n; i++) params[i] -= lr * grads[i];
+}
+
+// ================================================================
+// MODEL: LinReg (w: Tensor[1 1], b: Vec[1]) — 2 params
+// ================================================================
+function createLinReg() {
+    const _buf = new Float32Array(2);
+    return { _buf, w: _buf.subarray(0, 1), b: _buf.subarray(1, 2) };
+}
+function createLinRegGrad() {
+    const _buf = new Float32Array(2);
+    return { _buf, d_w: _buf.subarray(0, 1), d_b: _buf.subarray(1, 2) };
+}
+function createLinRegCache() {
+    return { wProj: new Float32Array(1), sum: new Float32Array(1) };
+}
+function LinRegForward(me, x, output, cache) {
+    Matmul(me.w, x, cache.wProj, 1, 1);       // wProj = w * x
+    VecAdd(cache.wProj, me.b, cache.sum, 1);   // sum = wProj + b
+    output.set(cache.sum);
+}
+function LinRegBackward(me, x, c, d_output, g, d_input) {
+    const d_sum = new Float32Array(1);
+    d_sum.set(d_output);
+    const d_wProj = new Float32Array(1);
+    d_wProj.set(d_sum);
+    // d_b += d_sum
+    g.d_b[0] += d_sum[0];
+    // d_w += d_wProj * x^T (outer product 1x1)
+    OuterProductAdd(d_wProj, x, g.d_w, 1, 1);
+    // d_input = W^T * d_wProj
+    if (d_input) MatmulTranspose(me.w, d_wProj, d_input, 1, 1);
+}
+function LinRegInit(obj, stddev) {
+    for (let i = 0; i < 2; i++) obj._buf[i] = RngNormal() * stddev;
+}
+
+// ================================================================
+// TRAINING DATA — ore studiate → voto Fisica
+// ================================================================
+const DATA_X = [1, 2, 3, 4, 5, 7, 8, 10];
+const DATA_Y = [3.0, 4.5, 4.0, 5.5, 6.0, 7.0, 8.5, 9.0];
+const N_SAMPLES = DATA_X.length;
+const TRAIN = DATA_X.map((x, i) => ({
+    x: new Float32Array([x]),
+    y: new Float32Array([DATA_Y[i]])
+}));
+
+// ================================================================
+// DEMO STATE
+// ================================================================
+let model, grad, cache, pred, dPred;
+let epoch, losses, running, consoleLines;
+let lastGradW, lastGradB, lastDeltaW, lastDeltaB;
+
+function initState() {
+    model = createLinReg(); grad = createLinRegGrad(); cache = createLinRegCache();
+    pred = new Float32Array(1); dPred = new Float32Array(1);
+    epoch = 0; losses = []; consoleLines = [];
+    lastGradW = 0; lastGradB = 0; lastDeltaW = 0; lastDeltaB = 0;
+    RngSeed(42);
+    LinRegInit(model, 0.1);
+}
+
+const LR = 0.001;
+
+function trainOneEpoch() {
+    let totalLoss = 0;
+    let totalDw = 0, totalDb = 0;
+    const wBefore = model._buf[0];
+    const bBefore = model._buf[1];
+
+    for (const { x, y } of TRAIN) {
+        LinRegForward(model, x, pred, cache);
+        const loss = MseForward(pred, y, 1);
+        MseBackward(pred, y, dPred, 1);
+        grad._buf.fill(0);
+        LinRegBackward(model, x, cache, dPred, grad, null);
+        totalDw += grad.d_w[0];
+        totalDb += grad.d_b[0];
+        SgdStep(model._buf, grad._buf, 2, LR);
+        totalLoss += loss;
+    }
+
+    lastGradW = totalDw;
+    lastGradB = totalDb;
+    lastDeltaW = model._buf[0] - wBefore;
+    lastDeltaB = model._buf[1] - bBefore;
+
+    return totalLoss;
+}
+
+function predictVal(hours) {
+    return model._buf[0] * hours + model._buf[1];
+}
+
+// ================================================================
+// VISUALIZATION
+// ================================================================
+function setupCanvas(canvas) {
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.round(rect.width * dpr);
+    canvas.height = Math.round(rect.height * dpr);
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    return { ctx, w: rect.width, h: rect.height };
+}
+
+function drawScatter() {
+    const cvEl = document.getElementById('cv-scatter');
+    const { ctx, w, h } = setupCanvas(cvEl);
+    const pad = { top: 16, right: 20, bottom: 32, left: 44 };
+    const pw = w - pad.left - pad.right;
+    const ph = h - pad.top - pad.bottom;
+
+    ctx.clearRect(0, 0, w, h);
+
+    const xMin = 0, xMax = 12, yMin = 0, yMax = 10;
+    const toX = v => pad.left + ((v - xMin) / (xMax - xMin)) * pw;
+    const toY = v => pad.top + (1 - (v - yMin) / (yMax - yMin)) * ph;
+
+    // Grid
+    ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+    for (let v = 0; v <= 10; v += 2) {
+        const y = toY(v);
+        ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + pw, y); ctx.stroke();
+    }
+    for (let v = 0; v <= 12; v += 2) {
+        const x = toX(v);
+        ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, pad.top + ph); ctx.stroke();
+    }
+
+    // Sufficiency line (voto 6)
+    ctx.strokeStyle = 'rgba(34, 197, 94, 0.15)'; ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    const y6 = toY(6);
+    ctx.beginPath(); ctx.moveTo(pad.left, y6); ctx.lineTo(pad.left + pw, y6); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(34, 197, 94, 0.3)';
+    ctx.font = '9px -apple-system, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('sufficienza', pad.left + 4, y6 - 3);
+
+    // Regression line
+    const wVal = model._buf[0], bVal = model._buf[1];
+    const rx0 = 0, rx1 = 12;
+    const ry0 = wVal * rx0 + bVal, ry1 = wVal * rx1 + bVal;
+    ctx.beginPath();
+    ctx.moveTo(toX(rx0), toY(ry0));
+    ctx.lineTo(toX(rx1), toY(ry1));
+    ctx.strokeStyle = '#f97316'; ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    // Label on line
+    const labelX = 9.5;
+    const labelY = wVal * labelX + bVal;
+    if (labelY > yMin && labelY < yMax) {
+        ctx.fillStyle = '#f97316';
+        ctx.font = 'bold 11px -apple-system, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(`y = ${wVal.toFixed(2)}x + ${bVal.toFixed(2)}`, toX(labelX) - 80, toY(labelY) - 8);
+    }
+
+    // Data points
+    for (let i = 0; i < N_SAMPLES; i++) {
+        const px = toX(DATA_X[i]), py = toY(DATA_Y[i]);
+        // Shadow
+        ctx.beginPath(); ctx.arc(px, py, 8, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fill();
+        // Circle
+        ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI * 2);
+        ctx.fillStyle = '#58a6ff'; ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+
+    // Axes labels
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '10px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Ore studiate', w / 2, h - 4);
+    // Y axis values
+    ctx.textAlign = 'right';
+    for (let v = 0; v <= 10; v += 2) {
+        ctx.fillText(v.toString(), pad.left - 6, toY(v) + 3);
+    }
+    // X axis values
+    ctx.textAlign = 'center';
+    for (let v = 0; v <= 12; v += 2) {
+        ctx.fillText(v.toString(), toX(v), pad.top + ph + 14);
+    }
+    // Y label
+    ctx.save();
+    ctx.translate(10, h / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = 'center';
+    ctx.fillText('Voto Fisica', 0, 0);
+    ctx.restore();
+}
+
+function drawLossCurve() {
+    const cvEl = document.getElementById('cv-loss');
+    const { ctx, w, h } = setupCanvas(cvEl);
+    const pad = { top: 16, right: 16, bottom: 28, left: 44 };
+    const pw = w - pad.left - pad.right;
+    const ph = h - pad.top - pad.bottom;
+
+    ctx.clearRect(0, 0, w, h);
+
+    if (losses.length < 2) {
+        ctx.fillStyle = '#8b949e';
+        ctx.font = '12px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('In attesa del training...', w / 2, h / 2);
+        return;
+    }
+
+    const maxLoss = Math.max(...losses) * 1.05;
+
+    // Grid
+    ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+        const y = pad.top + (ph * i / 4);
+        ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + pw, y); ctx.stroke();
+    }
+
+    // Loss line
+    ctx.beginPath();
+    for (let i = 0; i < losses.length; i++) {
+        const x = pad.left + (i / (losses.length - 1)) * pw;
+        const y = pad.top + (1 - losses[i] / maxLoss) * ph;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = '#22c55e'; ctx.lineWidth = 2; ctx.stroke();
+
+    // Gradient fill
+    ctx.lineTo(pad.left + pw, pad.top + ph);
+    ctx.lineTo(pad.left, pad.top + ph);
+    ctx.closePath();
+    const grd = ctx.createLinearGradient(0, pad.top, 0, pad.top + ph);
+    grd.addColorStop(0, 'rgba(34, 197, 94, 0.2)');
+    grd.addColorStop(1, 'rgba(34, 197, 94, 0.0)');
+    ctx.fillStyle = grd; ctx.fill();
+
+    // Y labels
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px -apple-system, sans-serif';
+    ctx.textAlign = 'right';
+    for (let i = 0; i <= 4; i++) {
+        const val = maxLoss * (1 - i / 4);
+        ctx.fillText(val.toFixed(1), pad.left - 6, pad.top + ph * i / 4 + 3);
+    }
+    ctx.textAlign = 'center';
+    ctx.fillText('epoch', w / 2, h - 4);
+    ctx.textAlign = 'left';
+    ctx.fillText('0', pad.left, h - 10);
+    ctx.textAlign = 'right';
+    ctx.fillText(epoch.toString(), pad.left + pw, h - 10);
+}
+
+function fmtSigned(v, decimals) {
+    const s = v >= 0 ? '+' : '';
+    return s + v.toFixed(decimals);
+}
+
+function gradColor(v) {
+    // Positive gradient → red (param decreases), negative → green (param increases)
+    return v > 0 ? '#f85149' : v < 0 ? '#3fb950' : '#8b949e';
+}
+
+function updateGradPanel() {
+    const w = model._buf[0], b = model._buf[1];
+    document.getElementById('grad-eq').innerHTML =
+        `&#x177; = <span style="color:#79c0ff">${w.toFixed(4)}</span> &middot; x + <span style="color:#79c0ff">${b.toFixed(4)}</span>`;
+    document.getElementById('val-w').textContent = w.toFixed(4);
+    document.getElementById('val-b').textContent = b.toFixed(4);
+
+    const gw = document.getElementById('grad-w');
+    gw.textContent = fmtSigned(lastGradW, 4);
+    gw.style.color = gradColor(lastGradW);
+
+    const gb = document.getElementById('grad-b');
+    gb.textContent = fmtSigned(lastGradB, 4);
+    gb.style.color = gradColor(lastGradB);
+
+    document.getElementById('delta-w').textContent = fmtSigned(lastDeltaW, 6);
+    document.getElementById('delta-w').style.color = gradColor(-lastGradW);
+    document.getElementById('delta-b').textContent = fmtSigned(lastDeltaB, 6);
+    document.getElementById('delta-b').style.color = gradColor(-lastGradB);
+}
+
+function updatePrediction() {
+    const slider = document.getElementById('pred-slider');
+    const hours = parseFloat(slider.value);
+    document.getElementById('pred-hours').textContent = hours;
+    const grade = predictVal(hours);
+    const el = document.getElementById('pred-result');
+    el.textContent = grade.toFixed(1);
+    // Color: green if passing (>=6), yellow if close, red if failing
+    if (grade >= 6) el.style.color = '#3fb950';
+    else if (grade >= 5) el.style.color = '#d29922';
+    else el.style.color = '#f85149';
+}
+
+function updateStats(loss) {
+    document.getElementById('stat-epoch').textContent = epoch;
+    if (loss !== undefined) {
+        document.getElementById('stat-loss').textContent = loss.toFixed(4);
+    }
+}
+
+function logLine(text) {
+    consoleLines.push(text);
+    if (consoleLines.length > 50) consoleLines.shift();
+    document.getElementById('console-out').textContent = consoleLines.join('\n');
+    const el = document.getElementById('console-out');
+    el.scrollTop = el.scrollHeight;
+}
+
+// ================================================================
+// ANIMATION LOOP
+// ================================================================
+const MAX_EPOCH = 2000;
+
+function animate() {
+    if (!running) return;
+    const speed = parseInt(document.getElementById('speed').value);
+    let lastLoss = 0;
+
+    for (let i = 0; i < speed && epoch < MAX_EPOCH; i++) {
+        lastLoss = trainOneEpoch();
+        if (epoch % 5 === 0) losses.push(lastLoss);
+        if (epoch % 500 === 0) {
+            logLine(`epoch ${epoch}  loss ${lastLoss.toFixed(4)}`);
+        }
+        epoch++;
+    }
+
+    drawScatter();
+    drawLossCurve();
+    updateGradPanel();
+    updatePrediction();
+    updateStats(lastLoss);
+
+    if (epoch >= MAX_EPOCH) {
+        running = false;
+        const btn = document.getElementById('btn-train');
+        btn.textContent = 'Reset';
+        btn.disabled = false;
+        document.getElementById('stat-status').textContent = 'Done';
+        document.getElementById('stat-status').style.color = '#22c55e';
+        logLine(`\nRisultato: y = ${model._buf[0].toFixed(4)}x + ${model._buf[1].toFixed(4)}`);
+    } else {
+        document.getElementById('stat-status').textContent = 'Training';
+        document.getElementById('stat-status').style.color = '#eab308';
+        requestAnimationFrame(animate);
+    }
+}
+
+// ================================================================
+// INIT
+// ================================================================
+function init() {
+    document.getElementById('source-code').innerHTML = highlightDx(DX_SOURCE);
+    initState();
+    drawScatter();
+    drawLossCurve();
+    updateGradPanel();
+    updatePrediction();
+
+    document.getElementById('btn-train').addEventListener('click', () => {
+        if (running) return;
+        if (epoch >= MAX_EPOCH) {
+            initState();
+            drawScatter();
+            drawLossCurve();
+            updateGradPanel();
+            updatePrediction();
+            updateStats();
+            document.getElementById('stat-loss').textContent = '\u2014';
+            document.getElementById('stat-status').textContent = 'Ready';
+            document.getElementById('stat-status').style.color = '#8b949e';
+            document.getElementById('console-out').textContent = '';
+            consoleLines = [];
+            document.getElementById('btn-train').textContent = 'Train';
+            return;
+        }
+        running = true;
+        document.getElementById('btn-train').textContent = 'Training...';
+        document.getElementById('btn-train').disabled = true;
+        logLine('Training LinReg (2 params)\n');
+        requestAnimationFrame(animate);
+    });
+
+    document.getElementById('pred-slider').addEventListener('input', updatePrediction);
+
+    window.addEventListener('resize', () => {
+        drawScatter();
+        drawLossCurve();
+    });
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+
+</body>
+</html>

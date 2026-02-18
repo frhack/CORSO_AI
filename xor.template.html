@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dx — ML compiler demo</title>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.27.4/full/pyodide.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0d1117; color: #c9d1d9;
+    min-height: 100vh;
+}
+.controls { display: flex; gap: 8px; align-items: center; }
+button {
+    background: #238636; color: #fff; border: none; border-radius: 6px;
+    padding: 7px 20px; font-size: 13px; font-weight: 600; cursor: pointer;
+    transition: background 0.15s;
+}
+button:hover { background: #2ea043; }
+button:disabled { background: #21262d; color: #8b949e; cursor: not-allowed; }
+select {
+    background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+    border-radius: 6px; padding: 6px 10px; font-size: 12px; cursor: pointer;
+}
+main {
+    display: grid; grid-template-columns: 520px 1fr;
+    height: 100vh;
+}
+@media (max-width: 900px) {
+    main { grid-template-columns: 1fr; }
+    .code-panel { max-height: 40vh; }
+}
+.code-panel {
+    border-right: 1px solid #21262d; overflow: auto; padding: 0;
+    background: #0d1117;
+}
+.panel-header {
+    font-size: 12px; color: #8b949e; text-transform: uppercase;
+    letter-spacing: 1px; padding: 12px 16px 8px;
+    border-bottom: 1px solid #21262d; background: #161b22;
+    position: sticky; top: 0; z-index: 1;
+}
+.editor-wrap {
+    position: relative; width: 100%; height: calc(100% - 40px);
+    overflow: hidden;
+}
+.editor-wrap pre, .editor-wrap textarea {
+    font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Menlo', 'Consolas', monospace;
+    font-size: 13px; line-height: 1.5; padding: 12px 16px;
+    tab-size: 4; margin: 0; border: none; outline: none;
+    white-space: pre; overflow: auto;
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+}
+.editor-highlight {
+    background: #0d1117; color: #c9d1d9; pointer-events: none; z-index: 0;
+}
+.editor-textarea {
+    background: transparent; color: transparent; caret-color: #c9d1d9;
+    z-index: 1; resize: none; -webkit-text-fill-color: transparent;
+}
+.kw { color: #ff7b72; }
+.ty { color: #79c0ff; }
+.fn { color: #d2a8ff; }
+.num { color: #79c0ff; }
+.str { color: #a5d6ff; }
+.cm { color: #8b949e; font-style: italic; }
+.pr { color: #ffa657; font-weight: 600; }
+.op { color: #ff7b72; }
+.dot { color: #ff7b72; font-weight: 700; font-size: 18px; vertical-align: middle; line-height: 0; }
+.viz-panel {
+    padding: 16px; display: flex; flex-direction: column; gap: 12px;
+    overflow: auto;
+}
+.stats-bar {
+    display: flex; gap: 32px; padding: 8px 0;
+}
+.stat .label { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; }
+.stat .value { font-size: 22px; font-weight: 700; color: #58a6ff; font-variant-numeric: tabular-nums; }
+.canvas-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.card {
+    background: #161b22; border: 1px solid #21262d; border-radius: 8px;
+    padding: 12px; display: flex; flex-direction: column; gap: 8px;
+}
+.card-title {
+    font-size: 11px; color: #8b949e; text-transform: uppercase;
+    letter-spacing: 1px;
+}
+canvas { border-radius: 4px; width: 75%; aspect-ratio: 1; display: block; background: #0d1117; }
+.card-loss canvas { aspect-ratio: 4/3; }
+.predictions {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px;
+    font-family: 'SF Mono', 'JetBrains Mono', monospace; font-size: 13px;
+}
+.pred-row { display: flex; align-items: center; gap: 8px; }
+.pred-input { color: #8b949e; min-width: 70px; }
+.pred-value { font-weight: 700; min-width: 55px; transition: color 0.3s; }
+.pred-exp { color: #8b949e; font-size: 11px; }
+.console-out {
+    font-family: 'SF Mono', 'JetBrains Mono', monospace;
+    font-size: 11px; line-height: 1.5; color: #8b949e;
+    max-height: 100px; overflow-y: auto; white-space: pre;
+    padding: 8px; background: #0d1117; border-radius: 4px;
+    border: 1px solid #21262d;
+}
+</style>
+</head>
+<body>
+
+<main>
+    <section class="code-panel">
+        <div class="editor-wrap">
+            <pre class="editor-highlight" id="editor-highlight"></pre>
+            <textarea class="editor-textarea" id="source-editor" spellcheck="false"></textarea>
+        </div>
+    </section>
+
+    <section class="viz-panel">
+        <div class="controls">
+            <button id="btn-train">Train</button>
+            <button id="btn-stop" disabled>Stop</button>
+            <select id="speed">
+                <option value="5">5 ep/frame</option>
+                <option value="20" selected>20 ep/frame</option>
+                <option value="100">100 ep/frame</option>
+            </select>
+        </div>
+
+        <div class="stats-bar">
+            <div class="stat">
+                <div class="label">Epoch</div>
+                <div class="value" id="stat-epoch">0</div>
+            </div>
+            <div class="stat">
+                <div class="label">Loss</div>
+                <div class="value" id="stat-loss">&mdash;</div>
+            </div>
+            <div class="stat">
+                <div class="label">Params</div>
+                <div class="value" id="stat-params">&mdash;</div>
+            </div>
+            <div class="stat">
+                <div class="label">Status</div>
+                <div class="value" id="stat-status" style="color:#8b949e">Ready</div>
+            </div>
+        </div>
+
+        <div class="canvas-row">
+            <div class="card">
+                <div class="card-title">Decision Boundary</div>
+                <canvas id="cv-boundary"></canvas>
+            </div>
+            <div class="card card-loss">
+                <div class="card-title">Loss Curve</div>
+                <canvas id="cv-loss"></canvas>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Predictions</div>
+            <div class="predictions" id="predictions">
+                <div class="pred-row"><span class="pred-input">0 xor 0</span><span class="pred-value" id="p00">&mdash;</span><span class="pred-exp">(exp: 0)</span></div>
+                <div class="pred-row"><span class="pred-input">0 xor 1</span><span class="pred-value" id="p01">&mdash;</span><span class="pred-exp">(exp: 1)</span></div>
+                <div class="pred-row"><span class="pred-input">1 xor 0</span><span class="pred-value" id="p10">&mdash;</span><span class="pred-exp">(exp: 1)</span></div>
+                <div class="pred-row"><span class="pred-input">1 xor 1</span><span class="pred-value" id="p11">&mdash;</span><span class="pred-exp">(exp: 0)</span></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Console</div>
+            <div class="console-out" id="console-out"></div>
+        </div>
+    </section>
+</main>
+
+<script>
+// ================================================================
+// DX SOURCE CODE (for display)
+// ================================================================
+const DX_SOURCE = `type Net
+    w1 : Tensor[8 2]    -- 8 hidden × 2 input
+    b1 : Vec[8]          -- 1 bias per hidden
+    w2 : Tensor[1 8]    -- 1 output × 8 hidden
+    b2 : Vec[1]          -- 1 bias output
+
+fun Net'apply(x: Vec[2]) -> Vec[1]
+    sigmoid(w1 o x + b1)
+    sigmoid(w2 o it + b2)
+
+net : Net(nn'init_normal(1.0))
+lr : 0.5
+
+X : [ [0 0]  [0 1]
+      [1 0]  [1 1] ]
+
+Y : [ [0] [1]
+      [1] [0] ]
+
+for epoch in 0..20000
+    total_loss : 0.0
+    for (x y) in X'zip(Y)
+        pred : net(x)
+        diff : pred - y
+        loss : diff . diff
+        grads : d loss / d net'params
+        net'params : net'params - lr * grads
+        total_loss : total_loss + loss
+    if epoch % 4000 = 0
+        print("epoch {epoch}  loss {total_loss}")
+
+for (x y) in X'zip(Y)
+    pred : net(x)
+    print("{pred}")`;
+
+// ================================================================
+// SYNTAX HIGHLIGHTER
+// ================================================================
+function highlightDx(code) {
+    let h = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return h.split('\n').map(line => {
+        const cmIdx = line.indexOf('--');
+        let cp = cmIdx >= 0 ? line.slice(0, cmIdx) : line;
+        let cm = cmIdx >= 0 ? '<span class="cm">' + line.slice(cmIdx) + '</span>' : '';
+        cp = cp.replace(/("(?:[^"\\]|\\.)*?")/g, '<span class="str">$1</span>');
+        cp = cp.replace(/\b(type|fun|for|if|in|print|arena|let|return)\b/g, '<span class="kw">$1</span>');
+        cp = cp.replace(/\b(Net|Vec|Tensor|Float|Int|String)\b/g, '<span class="ty">$1</span>');
+        cp = cp.replace(/\b(it|me)\b/g, '<span class="pr">$1</span>');
+        cp = cp.replace(/\b(nn|mse|sigmoid|relu|softmax|gelu)\b/g, '<span class="fn">$1</span>');
+        cp = cp.replace(/\b(d)\s+(net|model|loss)/g, '<span class="op">$1</span> $2');
+        cp = cp.replace(/ \. /g, ' \u00b7 ');
+        cp = cp.replace(/\b(\d+\.?\d*)\b/g, '<span class="num">$1</span>');
+        return cp + cm;
+    }).join('\n');
+}
+
+function syncHighlight() {
+    const ta = document.getElementById('source-editor');
+    const pre = document.getElementById('editor-highlight');
+    pre.innerHTML = highlightDx(ta.value) + '\n';
+}
+
+function syncScroll() {
+    const ta = document.getElementById('source-editor');
+    const pre = document.getElementById('editor-highlight');
+    pre.scrollTop = ta.scrollTop;
+    pre.scrollLeft = ta.scrollLeft;
+}
+
+// ================================================================
+// EMBEDDED DX COMPILER MODULES (injected by build script)
+// ================================================================
+%%DX_MODULES%%
+
+// ================================================================
+// PYODIDE SETUP + DX COMPILER
+// ================================================================
+let pyodide = null;
+
+async function initPyodide() {
+    pyodide = await loadPyodide();
+    pyodide.FS.mkdir('/dx');
+    for (const [name, code] of Object.entries(DX_MODULES))
+        pyodide.FS.writeFile('/dx/' + name, code);
+    pyodide.runPython('import sys; sys.path.insert(0, "/")');
+}
+
+function compileDx(source) {
+    pyodide.globals.set('__dx_source', source);
+    return pyodide.runPython(`
+from dx.parser import parse
+from dx.ir_lower import IRLower
+from dx.ir_passes import run_all_passes
+from dx.emit_js import emit_js
+
+program = parse(__dx_source)
+lowerer = IRLower(program)
+module = lowerer.lower()
+module = run_all_passes(module, lowerer)
+emit_js(module, lowerer)
+`);
+}
+
+// ================================================================
+// TRAINING DATA
+// ================================================================
+const TRAIN = [
+    { x: new Float32Array([0, 0]), y: new Float32Array([0]) },
+    { x: new Float32Array([0, 1]), y: new Float32Array([1]) },
+    { x: new Float32Array([1, 0]), y: new Float32Array([1]) },
+    { x: new Float32Array([1, 1]), y: new Float32Array([0]) },
+];
+const DATA_POINTS = [[0,0,0],[0,1,1],[1,0,1],[1,1,0]];
+
+// ================================================================
+// DEMO STATE
+// ================================================================
+let net, grad, cache, predCache, pred, dPred;
+let epoch, losses, running, consoleLines;
+let N_PARAMS, LR;
+
+function initState() {
+    net = createNet(); grad = createNetGrad(); cache = createNetCache();
+    predCache = createNetCache();
+    pred = new Float32Array(1); dPred = new Float32Array(1);
+    epoch = 0; losses = []; consoleLines = [];
+    RngSeed(42);
+    NetInit(net, 1.0);
+}
+
+function trainOneEpoch() {
+    let totalLoss = 0;
+    for (const { x, y } of TRAIN) {
+        NetForward(net, x, pred, cache);
+        const loss = SseForward(pred, y, 1);
+        SseBackward(pred, y, dPred, 1);
+        grad._buf.fill(0);
+        NetBackward(net, x, cache, dPred, grad, null);
+        SgdStep(net._buf, grad._buf, N_PARAMS, LR);
+        totalLoss += loss;
+    }
+    return totalLoss;
+}
+
+function predict(a, b) {
+    const inp = new Float32Array([a, b]);
+    const out = new Float32Array(1);
+    NetForward(net, inp, out, predCache);
+    return out[0];
+}
+
+// ================================================================
+// VISUALIZATION
+// ================================================================
+const GRID = 80;
+const offCv = document.createElement('canvas');
+offCv.width = GRID; offCv.height = GRID;
+const offCtx = offCv.getContext('2d');
+
+function setupCanvas(canvas) {
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.round(rect.width * dpr);
+    canvas.height = Math.round(rect.height * dpr);
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    return { ctx, w: rect.width, h: rect.height };
+}
+
+function drawBoundary() {
+    const cvEl = document.getElementById('cv-boundary');
+    const { ctx, w, h } = setupCanvas(cvEl);
+    const imgData = offCtx.createImageData(GRID, GRID);
+    const inp = new Float32Array(2);
+    const out = new Float32Array(1);
+    const c = createNetCache();
+    const vals = new Float32Array(GRID * GRID);
+
+    for (let gy = 0; gy < GRID; gy++) {
+        for (let gx = 0; gx < GRID; gx++) {
+            inp[0] = gx / (GRID - 1);
+            inp[1] = 1 - gy / (GRID - 1);
+            NetForward(net, inp, out, c);
+            vals[gy * GRID + gx] = out[0];
+            const v = Math.max(0, Math.min(1, out[0]));
+            const idx = (gy * GRID + gx) * 4;
+            imgData.data[idx]     = Math.round(59  + v * 180);
+            imgData.data[idx + 1] = Math.round(130 - v * 62);
+            imgData.data[idx + 2] = Math.round(246 - v * 178);
+            imgData.data[idx + 3] = 255;
+        }
+    }
+    offCtx.putImageData(imgData, 0, 0);
+    const margin = 24;
+    ctx.fillStyle = '#0d1117';
+    ctx.fillRect(0, 0, w, h);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(offCv, margin, margin, w - 2 * margin, h - 2 * margin);
+
+    const toX = x1 => margin + x1 * (w - 2 * margin);
+    const toY = x2 => (h - margin) - x2 * (h - 2 * margin);
+
+    // Draw actual decision boundary (output = 0.5 contour via marching squares)
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    for (let gy = 0; gy < GRID - 1; gy++) {
+        for (let gx = 0; gx < GRID - 1; gx++) {
+            const v00 = vals[gy * GRID + gx];
+            const v10 = vals[gy * GRID + gx + 1];
+            const v01 = vals[(gy+1) * GRID + gx];
+            const v11 = vals[(gy+1) * GRID + gx + 1];
+            const pts = [];
+            if ((v00 - 0.5) * (v10 - 0.5) < 0) {
+                const t = (0.5 - v00) / (v10 - v00);
+                pts.push([(gx + t) / (GRID-1), 1 - gy / (GRID-1)]);
+            }
+            if ((v10 - 0.5) * (v11 - 0.5) < 0) {
+                const t = (0.5 - v10) / (v11 - v10);
+                pts.push([(gx+1) / (GRID-1), 1 - (gy + t) / (GRID-1)]);
+            }
+            if ((v01 - 0.5) * (v11 - 0.5) < 0) {
+                const t = (0.5 - v01) / (v11 - v01);
+                pts.push([(gx + t) / (GRID-1), 1 - (gy+1) / (GRID-1)]);
+            }
+            if ((v00 - 0.5) * (v01 - 0.5) < 0) {
+                const t = (0.5 - v00) / (v01 - v00);
+                pts.push([gx / (GRID-1), 1 - (gy + t) / (GRID-1)]);
+            }
+            if (pts.length >= 2) {
+                ctx.moveTo(toX(pts[0][0]), toY(pts[0][1]));
+                ctx.lineTo(toX(pts[1][0]), toY(pts[1][1]));
+            }
+        }
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Data points
+    for (const [a, b, label] of DATA_POINTS) {
+        const px = toX(a);
+        const py = toY(b);
+        // Shadow
+        ctx.beginPath();
+        ctx.arc(px, py, 11, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.fill();
+        // Circle
+        ctx.beginPath();
+        ctx.arc(px, py, 9, 0, Math.PI * 2);
+        ctx.fillStyle = label ? '#ef4444' : '#3b82f6';
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+        // Label
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 10px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label.toString(), px, py);
+    }
+
+    // Axis labels
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '10px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('x\u2081', w / 2, h - 4);
+    ctx.save();
+    ctx.translate(10, h / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText('x\u2082', 0, 0);
+    ctx.restore();
+}
+
+function drawLossCurve() {
+    const cvEl = document.getElementById('cv-loss');
+    const { ctx, w, h } = setupCanvas(cvEl);
+    const pad = { top: 16, right: 16, bottom: 28, left: 44 };
+    const pw = w - pad.left - pad.right;
+    const ph = h - pad.top - pad.bottom;
+
+    ctx.clearRect(0, 0, w, h);
+
+    if (losses.length < 2) {
+        ctx.fillStyle = '#8b949e';
+        ctx.font = '12px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Waiting for training...', w / 2, h / 2);
+        return;
+    }
+
+    const maxLoss = Math.max(...losses) * 1.05;
+
+    // Grid lines
+    ctx.strokeStyle = '#21262d';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+        const y = pad.top + (ph * i / 4);
+        ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + pw, y); ctx.stroke();
+    }
+
+    // Loss line
+    ctx.beginPath();
+    for (let i = 0; i < losses.length; i++) {
+        const x = pad.left + (i / (losses.length - 1)) * pw;
+        const y = pad.top + (1 - losses[i] / maxLoss) * ph;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = '#22c55e';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Gradient fill
+    const lastX = pad.left + pw;
+    ctx.lineTo(lastX, pad.top + ph);
+    ctx.lineTo(pad.left, pad.top + ph);
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + ph);
+    grad.addColorStop(0, 'rgba(34, 197, 94, 0.2)');
+    grad.addColorStop(1, 'rgba(34, 197, 94, 0.0)');
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Y-axis labels
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '10px -apple-system, sans-serif';
+    ctx.textAlign = 'right';
+    for (let i = 0; i <= 4; i++) {
+        const val = maxLoss * (1 - i / 4);
+        ctx.fillText(val.toFixed(2), pad.left - 6, pad.top + ph * i / 4 + 3);
+    }
+    // X-axis label
+    ctx.textAlign = 'center';
+    ctx.fillText('epoch', w / 2, h - 4);
+    ctx.textAlign = 'left';
+    ctx.fillText('0', pad.left, h - 10);
+    ctx.textAlign = 'right';
+    ctx.fillText(epoch.toString(), pad.left + pw, h - 10);
+}
+
+function updatePredictions() {
+    const ids = ['p00', 'p01', 'p10', 'p11'];
+    for (let i = 0; i < 4; i++) {
+        const [a, b, expected] = DATA_POINTS[i];
+        const val = predict(a, b);
+        const el = document.getElementById(ids[i]);
+        const err = Math.abs(val - expected);
+        el.textContent = val.toFixed(4);
+        el.style.color = err < 0.1 ? '#22c55e' : err < 0.3 ? '#eab308' : '#8b949e';
+    }
+}
+
+function updateStats(loss) {
+    document.getElementById('stat-epoch').textContent = epoch;
+    if (loss !== undefined) {
+        document.getElementById('stat-loss').textContent = loss.toFixed(4);
+    }
+}
+
+function logLine(text) {
+    consoleLines.push(text);
+    if (consoleLines.length > 50) consoleLines.shift();
+    document.getElementById('console-out').textContent = consoleLines.join('\n');
+    const el = document.getElementById('console-out');
+    el.scrollTop = el.scrollHeight;
+}
+
+// ================================================================
+// ANIMATION LOOP
+// ================================================================
+const MAX_EPOCH = 20000;
+
+function animate() {
+    if (!running) return;
+    const speed = parseInt(document.getElementById('speed').value);
+    let lastLoss = 0;
+
+    for (let i = 0; i < speed && epoch < MAX_EPOCH; i++) {
+        lastLoss = trainOneEpoch();
+        if (epoch % 10 === 0) losses.push(lastLoss);
+        if (epoch % 4000 === 0) {
+            logLine(`epoch ${epoch}  loss ${lastLoss.toFixed(4)}`);
+        }
+        epoch++;
+    }
+
+    drawBoundary();
+    drawLossCurve();
+    updatePredictions();
+    updateStats(lastLoss);
+
+    if (!running || epoch >= MAX_EPOCH) {
+        running = false;
+        document.getElementById('btn-train').textContent = 'Train';
+        document.getElementById('btn-train').disabled = false;
+        document.getElementById('btn-stop').disabled = true;
+        document.getElementById('stat-status').textContent = epoch >= MAX_EPOCH ? 'Done' : 'Stopped';
+        document.getElementById('stat-status').style.color = epoch >= MAX_EPOCH ? '#22c55e' : '#f97316';
+        logLine(`\nPredictions:`);
+        for (const [a, b, exp] of DATA_POINTS) {
+            logLine(`  ${a} xor ${b} = ${predict(a, b).toFixed(4)}  (expected ${exp})`);
+        }
+    } else {
+        document.getElementById('stat-status').textContent = 'Training';
+        document.getElementById('stat-status').style.color = '#eab308';
+        requestAnimationFrame(animate);
+    }
+}
+
+// ================================================================
+// COMPILE + START
+// ================================================================
+function compileAndStart() {
+    const source = document.getElementById('source-editor').value;
+
+    logLine('Compiling dx \u2192 JS via Pyodide...');
+    const t0 = performance.now();
+
+    let jsCode;
+    try {
+        jsCode = compileDx(source);
+    } catch (e) {
+        logLine('Compilation error: ' + e.message);
+        document.getElementById('stat-status').textContent = 'Error';
+        document.getElementById('stat-status').style.color = '#f85149';
+        document.getElementById('btn-train').textContent = 'Train';
+        document.getElementById('btn-train').disabled = false;
+        return;
+    }
+
+    const dt = (performance.now() - t0).toFixed(0);
+    logLine(`Compiled in ${dt}ms`);
+
+    const lib = jsCode
+        .replace(/"use strict";\s*\n?/, '')
+        .replace(/\nmain\(\);\s*$/, '')
+        .replace(/^let /gm, 'var ')
+        .replace(/^const /gm, 'var ');
+
+    try {
+        (0, eval)(lib);
+    } catch (e) {
+        logLine('JS eval error: ' + e.message);
+        document.getElementById('stat-status').textContent = 'Error';
+        document.getElementById('stat-status').style.color = '#f85149';
+        document.getElementById('btn-train').textContent = 'Train';
+        document.getElementById('btn-train').disabled = false;
+        return;
+    }
+
+    const tmpNet = createNet();
+    N_PARAMS = tmpNet._buf.length;
+    document.getElementById('stat-params').textContent = N_PARAMS;
+
+    const src = document.getElementById('source-editor').value;
+    const lrMatch = src.match(/\blr\s*:\s*([\d.]+(?:e[+-]?\d+)?)/i);
+    LR = lrMatch ? parseFloat(lrMatch[1]) : 0.5;
+
+    logLine(`Model: ${N_PARAMS} params, lr=${LR}`);
+    logLine('Training Net (' + N_PARAMS + ' params)\n');
+
+    initState();
+    running = true;
+    document.getElementById('btn-train').textContent = 'Training...';
+    document.getElementById('btn-train').disabled = true;
+    document.getElementById('btn-stop').disabled = false;
+    document.getElementById('stat-status').textContent = 'Training';
+    document.getElementById('stat-status').style.color = '#eab308';
+    requestAnimationFrame(animate);
+}
+
+// ================================================================
+// INIT
+// ================================================================
+async function init() {
+    // Setup editor
+    const ta = document.getElementById('source-editor');
+    ta.value = DX_SOURCE;
+    syncHighlight();
+    ta.addEventListener('input', syncHighlight);
+    ta.addEventListener('scroll', syncScroll);
+    ta.addEventListener('keydown', (e) => {
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            const start = ta.selectionStart;
+            const end = ta.selectionEnd;
+            ta.value = ta.value.substring(0, start) + '    ' + ta.value.substring(end);
+            ta.selectionStart = ta.selectionEnd = start + 4;
+            syncHighlight();
+        }
+    });
+
+    // Load Pyodide
+    document.getElementById('btn-train').textContent = 'Loading compiler...';
+    document.getElementById('btn-train').disabled = true;
+    try {
+        await initPyodide();
+    } catch (e) {
+        document.getElementById('btn-train').textContent = 'Error loading compiler';
+        document.getElementById('stat-status').textContent = 'Error';
+        document.getElementById('stat-status').style.color = '#f85149';
+        console.error('Pyodide init failed:', e);
+        return;
+    }
+
+    document.getElementById('btn-train').textContent = 'Train';
+    document.getElementById('btn-train').disabled = false;
+    document.getElementById('stat-status').textContent = 'Ready';
+    document.getElementById('stat-status').style.color = '#8b949e';
+
+    // Train button — compile then train
+    document.getElementById('btn-train').addEventListener('click', () => {
+        if (running) return;
+        document.getElementById('stat-loss').textContent = '\u2014';
+        document.getElementById('stat-epoch').textContent = '0';
+        document.getElementById('stat-status').textContent = 'Compiling...';
+        document.getElementById('stat-status').style.color = '#d2a8ff';
+        document.getElementById('console-out').textContent = '';
+        consoleLines = [];
+        const ids = ['p00', 'p01', 'p10', 'p11'];
+        ids.forEach(id => {
+            const el = document.getElementById(id);
+            el.textContent = '\u2014';
+            el.style.color = '#8b949e';
+        });
+        setTimeout(compileAndStart, 50);
+    });
+
+    document.getElementById('btn-stop').addEventListener('click', () => {
+        running = false;
+        document.getElementById('btn-train').textContent = 'Train';
+        document.getElementById('btn-train').disabled = false;
+        document.getElementById('btn-stop').disabled = true;
+        document.getElementById('stat-status').textContent = 'Stopped';
+        document.getElementById('stat-status').style.color = '#f97316';
+    });
+
+    window.addEventListener('resize', () => {
+        if (typeof createNetCache === 'function') drawBoundary();
+        drawLossCurve();
+    });
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+
+</body>
+</html>

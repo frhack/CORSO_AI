@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dx — Loss Surface &amp; GD Trajectory</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0d1117; color: #c9d1d9;
+    min-height: 100vh;
+}
+.controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+button {
+    background: #238636; color: #fff; border: none; border-radius: 6px;
+    padding: 7px 20px; font-size: 13px; font-weight: 600; cursor: pointer;
+    transition: background 0.15s;
+}
+button:hover { background: #2ea043; }
+button:disabled { background: #21262d; color: #8b949e; cursor: not-allowed; }
+button.btn-danger { background: #da3633; }
+button.btn-danger:hover { background: #f85149; }
+input[type=number] {
+    background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+    border-radius: 6px; padding: 6px 10px; font-size: 12px; width: 80px;
+    font-family: 'SF Mono', 'JetBrains Mono', monospace;
+}
+input[type=range] { accent-color: #58a6ff; }
+label.ctrl-label {
+    font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 1px;
+    display: flex; align-items: center; gap: 4px;
+}
+main {
+    display: grid; grid-template-columns: 418px 1fr;
+    height: 100vh;
+}
+@media (max-width: 900px) {
+    main { grid-template-columns: 1fr; }
+    .code-panel { max-height: 40vh; }
+}
+.code-panel {
+    border-right: 1px solid #21262d; overflow: auto; padding: 0;
+    background: #0d1117;
+}
+.source-code {
+    font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Menlo', 'Consolas', monospace;
+    font-size: 13px; line-height: 1.0; padding: 12px 16px;
+    white-space: pre; overflow-x: auto; tab-size: 4;
+    counter-reset: line;
+}
+.source-code .line { display: block; }
+.source-code .line::before {
+    counter-increment: line; content: counter(line);
+    display: inline-block; width: 24px; margin-right: 16px;
+    text-align: right; color: #8b949e; font-size: 11px;
+}
+.kw { color: #ff7b72; }
+.ty { color: #79c0ff; }
+.fn { color: #d2a8ff; }
+.num { color: #79c0ff; }
+.str { color: #a5d6ff; }
+.cm { color: #8b949e; font-style: italic; }
+.pr { color: #ffa657; font-weight: 600; }
+.op { color: #ff7b72; }
+.viz-panel {
+    padding: 16px; display: flex; flex-direction: column; gap: 12px;
+    overflow: auto;
+}
+.stats-bar {
+    display: flex; gap: 32px; padding: 8px 0; flex-wrap: wrap;
+}
+.stat .label { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; }
+.stat .value { font-size: 22px; font-weight: 700; color: #58a6ff; font-variant-numeric: tabular-nums; }
+.canvas-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.card {
+    background: #161b22; border: 1px solid #21262d; border-radius: 8px;
+    padding: 12px; display: flex; flex-direction: column; gap: 8px;
+}
+.card-title {
+    font-size: 11px; color: #8b949e; text-transform: uppercase;
+    letter-spacing: 1px;
+}
+canvas { border-radius: 4px; width: 100%; aspect-ratio: 4/3; display: block; background: #0d1117; }
+.predict-row {
+    display: flex; align-items: center; gap: 12px;
+    font-family: 'SF Mono', 'JetBrains Mono', monospace; font-size: 13px;
+}
+.predict-row input[type=range] { flex: 1; accent-color: #58a6ff; }
+.predict-result {
+    font-size: 20px; font-weight: 700; color: #58a6ff;
+    min-width: 50px; text-align: right;
+}
+.predict-label { color: #8b949e; min-width: 80px; }
+.console-out {
+    font-family: 'SF Mono', 'JetBrains Mono', monospace;
+    font-size: 11px; line-height: 1.5; color: #8b949e;
+    max-height: 100px; overflow-y: auto; white-space: pre;
+    padding: 8px; background: #0d1117; border-radius: 4px;
+    border: 1px solid #21262d;
+}
+</style>
+</head>
+<body>
+
+<main>
+    <section class="code-panel">
+        <div class="source-code" id="source-code"></div>
+    </section>
+
+    <section class="viz-panel">
+        <div class="controls">
+            <button id="btn-step">Step</button>
+            <button id="btn-play">Play</button>
+            <label class="ctrl-label">Delay
+                <input type="range" id="delay-slider" min="36" max="720" step="36" value="144" style="width:100px;">
+                <span id="delay-val">144ms</span>
+            </label>
+            <label class="ctrl-label">lr
+                <input type="number" id="lr-input" value="0.01" step="0.001" min="0.0001" max="1">
+            </label>
+            <button id="btn-reset" style="background:#30363d;">Reset</button>
+        </div>
+
+        <div class="stats-bar">
+            <div class="stat">
+                <div class="label">Epoch</div>
+                <div class="value" id="stat-epoch">0</div>
+            </div>
+            <div class="stat">
+                <div class="label">Loss</div>
+                <div class="value" id="stat-loss">&mdash;</div>
+            </div>
+            <div class="stat">
+                <div class="label">w</div>
+                <div class="value" id="stat-w">&mdash;</div>
+            </div>
+            <div class="stat">
+                <div class="label">b</div>
+                <div class="value" id="stat-b">&mdash;</div>
+            </div>
+            <div class="stat">
+                <div class="label">Status</div>
+                <div class="value" id="stat-status" style="color:#8b949e">Ready</div>
+            </div>
+        </div>
+
+        <div class="canvas-row">
+            <div class="card">
+                <div class="card-title">Dati &amp; Regressione</div>
+                <canvas id="cv-scatter"></canvas>
+            </div>
+            <div class="card">
+                <div class="card-title">Superficie Loss MSE(w, b)</div>
+                <canvas id="cv-contour"></canvas>
+            </div>
+        </div>
+
+        <div class="canvas-row">
+            <div class="card">
+                <div class="card-title">Predizione</div>
+                <div style="padding: 12px 0; display: flex; flex-direction: column; gap: 12px;">
+                    <div class="predict-row">
+                        <span class="predict-label">Ore studio:</span>
+                        <input type="range" id="pred-slider" min="0" max="12" step="0.5" value="6">
+                        <span id="pred-hours" style="color:#e6edf3; min-width:30px;">6</span>
+                    </div>
+                    <div class="predict-row">
+                        <span class="predict-label">Voto previsto:</span>
+                        <span class="predict-result" id="pred-result">&mdash;</span>
+                    </div>
+                    <div style="font-size: 11px; color: #8b949e; margin-top: 4px;">
+                        Trascina il cursore per prevedere il voto in base alle ore di studio.
+                    </div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">Console</div>
+                <div class="console-out" id="console-out"></div>
+            </div>
+        </div>
+    </section>
+</main>
+
+<script>
+// ================================================================
+// DX SOURCE CODE
+// ================================================================
+const DX_SOURCE = `type LinReg
+    w : Float
+    b : Float
+
+fun LinReg'apply(X: Vec[5]) -> Vec[5]
+    w * X + b
+
+model : LinReg(nn'init_normal(0.1))
+lr : 0.01
+X : [1   2   3   4   5  ]
+Y : [3.0 4.5 4.0 5.5 6.0]
+
+for epoch in 0..5000
+    diff : Y - model(X)
+    loss : diff . diff
+    grads : d loss / d model'params
+    model'params : model'params - lr * grads
+    if epoch % 50 = 0
+        print("epoch {epoch}  loss {loss}")
+print("w = {model'w}  b = {model'b}")`;
+
+// ================================================================
+// SYNTAX HIGHLIGHTER
+// ================================================================
+function highlightDx(code) {
+    let h = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const lines = h.split('\n');
+    return lines.map(line => {
+        const cmIdx = line.indexOf('--');
+        let code_part = cmIdx >= 0 ? line.slice(0, cmIdx) : line;
+        let cm_part = cmIdx >= 0 ? '<span class="cm">' + line.slice(cmIdx) + '</span>' : '';
+        code_part = code_part.replace(/(&quot;[^&]*?&quot;|"[^"]*?")/g, '<span class="str">$1</span>');
+        code_part = code_part.replace(/\b(type|fun|for|if|in|print|arena|let|return)\b/g, '<span class="kw">$1</span>');
+        code_part = code_part.replace(/\b(LinReg|Net|Vec|Tensor|Float|Int|String)\b/g, '<span class="ty">$1</span>');
+        code_part = code_part.replace(/\b(it|me)\b/g, '<span class="pr">$1</span>');
+        code_part = code_part.replace(/\b(nn|mse|sigmoid|relu|softmax|gelu)\b/g, '<span class="fn">$1</span>');
+        code_part = code_part.replace(/\b(d)\s+(loss|model|net)/g, '<span class="op">$1</span> $2');
+        code_part = code_part.replace(/ \. /g, ' \u00b7 ');
+        code_part = code_part.replace(/\b(\d+\.?\d*)\b/g, '<span class="num">$1</span>');
+        return '<span class="line">' + code_part + cm_part + '</span>';
+    }).join('\n');
+}
+
+// ================================================================
+// TRAINING DATA
+// ================================================================
+const DATA_X = [1, 2, 3, 4, 5];
+const DATA_Y = [3.0, 4.5, 4.0, 5.5, 6.0];
+const N = DATA_X.length;
+
+// ================================================================
+// ANALYTIC MSE + GRADIENT
+// ================================================================
+function mseLoss(w, b) {
+    var sum = 0;
+    for (var i = 0; i < N; i++) {
+        var d = (w * DATA_X[i] + b) - DATA_Y[i];
+        sum += d * d;
+    }
+    return sum / N;
+}
+
+function mseGrad(w, b) {
+    var dw = 0, db = 0;
+    for (var i = 0; i < N; i++) {
+        var r = (w * DATA_X[i] + b) - DATA_Y[i];
+        dw += 2 * r * DATA_X[i] / N;
+        db += 2 * r / N;
+    }
+    return { dw: dw, db: db };
+}
+
+// ================================================================
+// ANALYTIC OPTIMUM (closed-form linear regression)
+// ================================================================
+function computeOptimum() {
+    var sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+    for (var i = 0; i < N; i++) {
+        sumX += DATA_X[i];
+        sumY += DATA_Y[i];
+        sumXY += DATA_X[i] * DATA_Y[i];
+        sumXX += DATA_X[i] * DATA_X[i];
+    }
+    var meanX = sumX / N, meanY = sumY / N;
+    var covXY = sumXY / N - meanX * meanY;
+    var varX = sumXX / N - meanX * meanX;
+    var wStar = covXY / varX;
+    var bStar = meanY - wStar * meanX;
+    return { w: wStar, b: bStar };
+}
+const OPTIMUM = computeOptimum();
+
+// ================================================================
+// VIRIDIS-LIKE COLORMAP
+// ================================================================
+const VIRIDIS = [
+    [68, 1, 84], [72, 35, 116], [64, 67, 135], [52, 94, 141],
+    [41, 120, 142], [32, 144, 140], [34, 167, 132], [68, 190, 112],
+    [121, 209, 81], [189, 222, 38], [253, 231, 37]
+];
+function viridisColor(t) {
+    t = Math.max(0, Math.min(1, t));
+    var idx = t * (VIRIDIS.length - 1);
+    var lo = Math.floor(idx), hi = Math.min(lo + 1, VIRIDIS.length - 1);
+    var f = idx - lo;
+    var r = VIRIDIS[lo][0] + f * (VIRIDIS[hi][0] - VIRIDIS[lo][0]);
+    var g = VIRIDIS[lo][1] + f * (VIRIDIS[hi][1] - VIRIDIS[lo][1]);
+    var b = VIRIDIS[lo][2] + f * (VIRIDIS[hi][2] - VIRIDIS[lo][2]);
+    return [Math.round(r), Math.round(g), Math.round(b)];
+}
+
+// ================================================================
+// CONTOUR GRID — precomputed
+// ================================================================
+const GRID_W_MIN = -0.5, GRID_W_MAX = 2.0;
+const GRID_B_MIN = -1.0, GRID_B_MAX = 5.0;
+const GRID_RES = 100;
+
+var lossGrid = null;      // Float64Array[GRID_RES * GRID_RES]
+var logLossMin = 0, logLossMax = 0;
+var contourCanvas = null;  // offscreen cached heatmap
+
+function buildGrid() {
+    lossGrid = new Float64Array(GRID_RES * GRID_RES);
+    var minL = Infinity, maxL = -Infinity;
+    for (var iy = 0; iy < GRID_RES; iy++) {
+        var bVal = GRID_B_MIN + (GRID_B_MAX - GRID_B_MIN) * iy / (GRID_RES - 1);
+        for (var ix = 0; ix < GRID_RES; ix++) {
+            var wVal = GRID_W_MIN + (GRID_W_MAX - GRID_W_MIN) * ix / (GRID_RES - 1);
+            var L = mseLoss(wVal, bVal);
+            lossGrid[iy * GRID_RES + ix] = L;
+            if (L < minL) minL = L;
+            if (L > maxL) maxL = L;
+        }
+    }
+    logLossMin = Math.log(1 + minL);
+    logLossMax = Math.log(1 + maxL);
+}
+
+function buildHeatmapCanvas(pixW, pixH) {
+    contourCanvas = document.createElement('canvas');
+    contourCanvas.width = pixW;
+    contourCanvas.height = pixH;
+    var ctx = contourCanvas.getContext('2d');
+    var imgData = ctx.createImageData(pixW, pixH);
+    var data = imgData.data;
+
+    for (var py = 0; py < pixH; py++) {
+        // map pixel y -> b (top = GRID_B_MAX, bottom = GRID_B_MIN)
+        var bIdx = (1 - py / (pixH - 1)) * (GRID_RES - 1);
+        var bLo = Math.floor(bIdx), bHi = Math.min(bLo + 1, GRID_RES - 1);
+        var bf = bIdx - bLo;
+        for (var px = 0; px < pixW; px++) {
+            var wIdx = (px / (pixW - 1)) * (GRID_RES - 1);
+            var wLo = Math.floor(wIdx), wHi = Math.min(wLo + 1, GRID_RES - 1);
+            var wf = wIdx - wLo;
+            // bilinear interpolation
+            var v00 = lossGrid[bLo * GRID_RES + wLo];
+            var v10 = lossGrid[bLo * GRID_RES + wHi];
+            var v01 = lossGrid[bHi * GRID_RES + wLo];
+            var v11 = lossGrid[bHi * GRID_RES + wHi];
+            var v = v00 * (1 - wf) * (1 - bf) + v10 * wf * (1 - bf) +
+                    v01 * (1 - wf) * bf + v11 * wf * bf;
+            var t = (Math.log(1 + v) - logLossMin) / (logLossMax - logLossMin);
+            var c = viridisColor(t);
+            var off = (py * pixW + px) * 4;
+            data[off] = c[0]; data[off + 1] = c[1]; data[off + 2] = c[2]; data[off + 3] = 255;
+        }
+    }
+    ctx.putImageData(imgData, 0, 0);
+}
+
+// ================================================================
+// CONTOUR LINES (simplified marching squares)
+// ================================================================
+function getContourLevels(numLevels) {
+    var levels = [];
+    for (var i = 1; i <= numLevels; i++) {
+        // evenly spaced in log space
+        var t = i / (numLevels + 1);
+        var logVal = logLossMin + t * (logLossMax - logLossMin);
+        levels.push(Math.exp(logVal) - 1);
+    }
+    return levels;
+}
+
+function drawContourLines(ctx, pad, pw, ph) {
+    var levels = getContourLevels(12);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.lineWidth = 0.8;
+
+    for (var li = 0; li < levels.length; li++) {
+        var threshold = levels[li];
+        ctx.beginPath();
+        for (var iy = 0; iy < GRID_RES - 1; iy++) {
+            for (var ix = 0; ix < GRID_RES - 1; ix++) {
+                var v00 = lossGrid[iy * GRID_RES + ix];
+                var v10 = lossGrid[iy * GRID_RES + (ix + 1)];
+                var v01 = lossGrid[(iy + 1) * GRID_RES + ix];
+                var v11 = lossGrid[(iy + 1) * GRID_RES + (ix + 1)];
+
+                // classify corners
+                var code = 0;
+                if (v00 >= threshold) code |= 1;
+                if (v10 >= threshold) code |= 2;
+                if (v01 >= threshold) code |= 4;
+                if (v11 >= threshold) code |= 8;
+                if (code === 0 || code === 15) continue;
+
+                // pixel coords for cell corners
+                var x0 = pad.left + (ix / (GRID_RES - 1)) * pw;
+                var x1 = pad.left + ((ix + 1) / (GRID_RES - 1)) * pw;
+                // y: iy=0 is b=GRID_B_MIN → bottom, iy=GRID_RES-1 is b=GRID_B_MAX → top
+                var y0 = pad.top + (1 - iy / (GRID_RES - 1)) * ph;
+                var y1 = pad.top + (1 - (iy + 1) / (GRID_RES - 1)) * ph;
+
+                function interp(va, vb, pa, pb) {
+                    if (Math.abs(va - vb) < 1e-12) return (pa + pb) / 2;
+                    var t = (threshold - va) / (vb - va);
+                    return pa + t * (pb - pa);
+                }
+
+                // edge midpoints (interpolated)
+                var topX = interp(v00, v10, x0, x1), topY = y0;
+                var bottomX = interp(v01, v11, x0, x1), bottomY = y1;
+                var leftX = x0, leftY = interp(v00, v01, y0, y1);
+                var rightX = x1, rightY = interp(v10, v11, y0, y1);
+
+                // draw segments based on marching squares case
+                var segments = [];
+                switch (code) {
+                    case 1: case 14: segments.push([leftX, leftY, topX, topY]); break;
+                    case 2: case 13: segments.push([topX, topY, rightX, rightY]); break;
+                    case 3: case 12: segments.push([leftX, leftY, rightX, rightY]); break;
+                    case 4: case 11: segments.push([bottomX, bottomY, leftX, leftY]); break;
+                    case 5:
+                        segments.push([leftX, leftY, topX, topY]);
+                        segments.push([bottomX, bottomY, rightX, rightY]);
+                        break;
+                    case 6: case 9: segments.push([topX, topY, bottomX, bottomY]); break;
+                    case 7: case 8: segments.push([bottomX, bottomY, rightX, rightY]); break;
+                    case 10:
+                        segments.push([topX, topY, rightX, rightY]);
+                        segments.push([bottomX, bottomY, leftX, leftY]);
+                        break;
+                }
+                for (var si = 0; si < segments.length; si++) {
+                    ctx.moveTo(segments[si][0], segments[si][1]);
+                    ctx.lineTo(segments[si][2], segments[si][3]);
+                }
+            }
+        }
+        ctx.stroke();
+    }
+}
+
+// ================================================================
+// DEMO STATE
+// ================================================================
+var w_param = 0, b_param = 0;
+var epoch = 0;
+var trajectory = [];
+var playing = false;
+var playTimer = null;
+var consoleLines = [];
+
+var MAX_EPOCH = 5000;
+var INIT_W = -0.2, INIT_B = 4.5;
+
+function resetState() {
+    w_param = INIT_W;
+    b_param = INIT_B;
+    epoch = 0;
+    trajectory = [{ w: w_param, b: b_param }];
+    consoleLines = [];
+    playing = false;
+    if (playTimer !== null) { clearTimeout(playTimer); playTimer = null; }
+}
+
+function getLr() {
+    return parseFloat(document.getElementById('lr-input').value) || 0.01;
+}
+function getDelay() {
+    return parseInt(document.getElementById('delay-slider').value) || 200;
+}
+
+// ================================================================
+// GD STEP
+// ================================================================
+function doStep() {
+    if (epoch >= MAX_EPOCH) {
+        stopPlay();
+        document.getElementById('stat-status').textContent = 'Done';
+        document.getElementById('stat-status').style.color = '#22c55e';
+        return;
+    }
+    var lr = getLr();
+    var g = mseGrad(w_param, b_param);
+    w_param -= lr * g.dw;
+    b_param -= lr * g.db;
+    epoch++;
+    trajectory.push({ w: w_param, b: b_param });
+    var loss = mseLoss(w_param, b_param);
+
+    if (epoch % 10 === 0 || epoch <= 5) {
+        logLine('epoch ' + epoch + '  loss=' + loss.toFixed(6) +
+                '  w=' + w_param.toFixed(4) + '  b=' + b_param.toFixed(4));
+    }
+
+    updateAll(loss);
+
+    if (epoch >= MAX_EPOCH) {
+        stopPlay();
+        document.getElementById('stat-status').textContent = 'Done';
+        document.getElementById('stat-status').style.color = '#22c55e';
+        logLine('Training complete. w=' + w_param.toFixed(4) + ' b=' + b_param.toFixed(4));
+    }
+}
+
+// ================================================================
+// VISUALIZATION — Canvas setup
+// ================================================================
+function setupCanvas(canvas) {
+    var dpr = window.devicePixelRatio || 1;
+    var rect = canvas.getBoundingClientRect();
+    canvas.width = Math.round(rect.width * dpr);
+    canvas.height = Math.round(rect.height * dpr);
+    var ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    return { ctx: ctx, w: rect.width, h: rect.height };
+}
+
+// ================================================================
+// DRAW SCATTER + REGRESSION
+// ================================================================
+function drawScatter() {
+    var cvEl = document.getElementById('cv-scatter');
+    var s = setupCanvas(cvEl);
+    var ctx = s.ctx, w = s.w, h = s.h;
+    var pad = { top: 16, right: 20, bottom: 32, left: 44 };
+    var pw = w - pad.left - pad.right;
+    var ph = h - pad.top - pad.bottom;
+
+    ctx.clearRect(0, 0, w, h);
+
+    var xMin = 0, xMax = 12, yMin = 0, yMax = 10;
+    var toX = function(v) { return pad.left + ((v - xMin) / (xMax - xMin)) * pw; };
+    var toY = function(v) { return pad.top + (1 - (v - yMin) / (yMax - yMin)) * ph; };
+
+    // Grid
+    ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+    for (var v = 0; v <= 10; v += 2) {
+        ctx.beginPath(); ctx.moveTo(pad.left, toY(v)); ctx.lineTo(pad.left + pw, toY(v)); ctx.stroke();
+    }
+    for (var v = 0; v <= 12; v += 2) {
+        ctx.beginPath(); ctx.moveTo(toX(v), pad.top); ctx.lineTo(toX(v), pad.top + ph); ctx.stroke();
+    }
+
+    // Regression line
+    var rx0 = 0, rx1 = 12;
+    var ry0 = w_param * rx0 + b_param, ry1 = w_param * rx1 + b_param;
+    ctx.beginPath();
+    ctx.moveTo(toX(rx0), toY(ry0));
+    ctx.lineTo(toX(rx1), toY(ry1));
+    ctx.strokeStyle = '#f97316'; ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    // Label (top-left corner)
+    ctx.fillStyle = '#f97316';
+    ctx.font = 'bold 11px -apple-system, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('y = ' + w_param.toFixed(2) + 'x + ' + b_param.toFixed(2),
+                  pad.left + 6, pad.top + 14);
+
+    // Data points
+    for (var i = 0; i < N; i++) {
+        var px = toX(DATA_X[i]), py = toY(DATA_Y[i]);
+        ctx.beginPath(); ctx.arc(px, py, 8, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fill();
+        ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI * 2);
+        ctx.fillStyle = '#58a6ff'; ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+
+    // Axes labels
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '10px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Ore studiate', w / 2, h - 4);
+    ctx.textAlign = 'right';
+    for (var v = 0; v <= 10; v += 2) ctx.fillText(v.toString(), pad.left - 6, toY(v) + 3);
+    ctx.textAlign = 'center';
+    for (var v = 0; v <= 12; v += 2) ctx.fillText(v.toString(), toX(v), pad.top + ph + 14);
+    ctx.save();
+    ctx.translate(10, h / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = 'center';
+    ctx.fillText('Voto Fisica', 0, 0);
+    ctx.restore();
+}
+
+// ================================================================
+// DRAW CONTOUR PLOT
+// ================================================================
+var heatmapBuiltFor = '';  // tracks size to avoid rebuilding
+
+function drawContour() {
+    var cvEl = document.getElementById('cv-contour');
+    var s = setupCanvas(cvEl);
+    var ctx = s.ctx, cw = s.w, ch = s.h;
+    var pad = { top: 16, right: 16, bottom: 32, left: 44 };
+    var pw = cw - pad.left - pad.right;
+    var ph = ch - pad.top - pad.bottom;
+
+    ctx.clearRect(0, 0, cw, ch);
+
+    // Build/cache heatmap offscreen canvas
+    var heatKey = Math.round(pw) + 'x' + Math.round(ph);
+    if (heatmapBuiltFor !== heatKey) {
+        buildHeatmapCanvas(Math.round(pw), Math.round(ph));
+        heatmapBuiltFor = heatKey;
+    }
+
+    // Draw heatmap
+    ctx.drawImage(contourCanvas, pad.left, pad.top, pw, ph);
+
+    // Contour lines
+    drawContourLines(ctx, pad, pw, ph);
+
+    // Coordinate mapping: w on x-axis, b on y-axis
+    function wToX(wv) { return pad.left + ((wv - GRID_W_MIN) / (GRID_W_MAX - GRID_W_MIN)) * pw; }
+    function bToY(bv) { return pad.top + (1 - (bv - GRID_B_MIN) / (GRID_B_MAX - GRID_B_MIN)) * ph; }
+
+    // Trajectory
+    if (trajectory.length > 1) {
+        for (var i = 1; i < trajectory.length; i++) {
+            var alpha = 0.15 + 0.85 * (i / (trajectory.length - 1));
+            ctx.beginPath();
+            ctx.moveTo(wToX(trajectory[i - 1].w), bToY(trajectory[i - 1].b));
+            ctx.lineTo(wToX(trajectory[i].w), bToY(trajectory[i].b));
+            ctx.strokeStyle = 'rgba(250, 204, 21, ' + alpha + ')';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+        // dots along trajectory (every few steps or all if few)
+        var step = Math.max(1, Math.floor(trajectory.length / 40));
+        for (var i = 0; i < trajectory.length; i += step) {
+            var alpha = 0.2 + 0.8 * (i / (trajectory.length - 1));
+            ctx.beginPath();
+            ctx.arc(wToX(trajectory[i].w), bToY(trajectory[i].b), 2.5, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(250, 204, 21, ' + alpha + ')';
+            ctx.fill();
+        }
+    }
+
+    // Gradient arrow — direction and relative size of -lr * gradient (amplified for visibility)
+    var g = mseGrad(w_param, b_param);
+    var lr = getLr();
+    var stepW = -lr * g.dw;
+    var stepB = -lr * g.db;
+    var stepMag = Math.sqrt(stepW * stepW + stepB * stepB);
+    if (stepMag > 1e-8) {
+        // convert step to pixel deltas, amplified to be visible
+        var maxArrowPx = Math.min(pw, ph) * 0.36;
+        var rawPxDx = stepW * (pw / (GRID_W_MAX - GRID_W_MIN));
+        var rawPxDy = -stepB * (ph / (GRID_B_MAX - GRID_B_MIN));
+        var rawPxMag = Math.sqrt(rawPxDx * rawPxDx + rawPxDy * rawPxDy);
+        var amplify = Math.min(maxArrowPx / rawPxMag, maxArrowPx / 2);
+        var pxDx = rawPxDx * amplify;
+        var pxDy = rawPxDy * amplify;
+
+        var startX = wToX(w_param), startY = bToY(b_param);
+        var endX = startX + pxDx, endY = startY + pxDy;
+
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
+        ctx.strokeStyle = '#f85149'; ctx.lineWidth = 2.5;
+        ctx.stroke();
+
+        // arrowhead
+        var angle = Math.atan2(endY - startY, endX - startX);
+        var headLen = 8;
+        ctx.beginPath();
+        ctx.moveTo(endX, endY);
+        ctx.lineTo(endX - headLen * Math.cos(angle - 0.4), endY - headLen * Math.sin(angle - 0.4));
+        ctx.moveTo(endX, endY);
+        ctx.lineTo(endX - headLen * Math.cos(angle + 0.4), endY - headLen * Math.sin(angle + 0.4));
+        ctx.strokeStyle = '#f85149'; ctx.lineWidth = 2.5;
+        ctx.stroke();
+    }
+
+    // Optimal point (star)
+    var optX = wToX(OPTIMUM.w), optY = bToY(OPTIMUM.b);
+    drawStar(ctx, optX, optY, 7, 5, '#22c55e');
+
+    // Current position (dot)
+    var curX = wToX(w_param), curY = bToY(b_param);
+    ctx.beginPath();
+    ctx.arc(curX, curY, 6, 0, Math.PI * 2);
+    ctx.fillStyle = '#facc15'; ctx.fill();
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.stroke();
+
+    // Axes labels
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '10px -apple-system, sans-serif';
+    // w axis (bottom)
+    ctx.textAlign = 'center';
+    ctx.fillText('w', cw / 2, ch - 4);
+    var wTicks = [-0.5, 0, 0.5, 1.0, 1.5, 2.0];
+    for (var i = 0; i < wTicks.length; i++) {
+        ctx.fillText(wTicks[i].toFixed(1), wToX(wTicks[i]), pad.top + ph + 14);
+    }
+    // b axis (left)
+    ctx.textAlign = 'right';
+    var bTicks = [-1, 0, 1, 2, 3, 4, 5];
+    for (var i = 0; i < bTicks.length; i++) {
+        ctx.fillText(bTicks[i].toString(), pad.left - 6, bToY(bTicks[i]) + 3);
+    }
+    ctx.save();
+    ctx.translate(10, ch / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = 'center';
+    ctx.fillText('b', 0, 0);
+    ctx.restore();
+
+    // Legend
+    ctx.font = '10px -apple-system, sans-serif';
+    ctx.textAlign = 'left';
+    // star legend
+    drawStar(ctx, pad.left + 8, pad.top + 12, 5, 5, '#22c55e');
+    ctx.fillStyle = '#8b949e';
+    ctx.fillText('ottimo', pad.left + 18, pad.top + 15);
+}
+
+function drawStar(ctx, cx, cy, outerR, points, color) {
+    var innerR = outerR * 0.45;
+    ctx.beginPath();
+    for (var i = 0; i < points * 2; i++) {
+        var r = (i % 2 === 0) ? outerR : innerR;
+        var angle = -Math.PI / 2 + (Math.PI * i / points);
+        var x = cx + r * Math.cos(angle);
+        var y = cy + r * Math.sin(angle);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = color; ctx.fill();
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.stroke();
+}
+
+// ================================================================
+// UI UPDATES
+// ================================================================
+function updateStats(loss) {
+    document.getElementById('stat-epoch').textContent = epoch;
+    document.getElementById('stat-w').textContent = w_param.toFixed(4);
+    document.getElementById('stat-b').textContent = b_param.toFixed(4);
+    if (loss !== undefined) {
+        document.getElementById('stat-loss').textContent = loss.toFixed(4);
+    }
+}
+
+function updatePrediction() {
+    var slider = document.getElementById('pred-slider');
+    var hours = parseFloat(slider.value);
+    document.getElementById('pred-hours').textContent = hours;
+    var grade = w_param * hours + b_param;
+    var el = document.getElementById('pred-result');
+    el.textContent = grade.toFixed(1);
+    if (grade >= 6) el.style.color = '#3fb950';
+    else if (grade >= 5) el.style.color = '#d29922';
+    else el.style.color = '#f85149';
+}
+
+function logLine(text) {
+    consoleLines.push(text);
+    if (consoleLines.length > 100) consoleLines.shift();
+    document.getElementById('console-out').textContent = consoleLines.join('\n');
+    var el = document.getElementById('console-out');
+    el.scrollTop = el.scrollHeight;
+}
+
+function updateAll(loss) {
+    if (loss === undefined) loss = mseLoss(w_param, b_param);
+    updateStats(loss);
+    drawScatter();
+    drawContour();
+    updatePrediction();
+}
+
+// ================================================================
+// PLAY/STOP
+// ================================================================
+function startPlay() {
+    if (playing) return;
+    playing = true;
+    document.getElementById('btn-play').textContent = 'Stop';
+    document.getElementById('btn-play').classList.add('btn-danger');
+    document.getElementById('stat-status').textContent = 'Training';
+    document.getElementById('stat-status').style.color = '#eab308';
+    playLoop();
+}
+
+function stopPlay() {
+    playing = false;
+    if (playTimer !== null) { clearTimeout(playTimer); playTimer = null; }
+    document.getElementById('btn-play').textContent = 'Play';
+    document.getElementById('btn-play').classList.remove('btn-danger');
+    document.getElementById('stat-status').textContent = 'Paused';
+    document.getElementById('stat-status').style.color = '#8b949e';
+}
+
+function playLoop() {
+    if (!playing) return;
+    doStep();
+    playTimer = setTimeout(playLoop, getDelay());
+}
+
+// ================================================================
+// INIT
+// ================================================================
+function init() {
+    document.getElementById('source-code').innerHTML = highlightDx(DX_SOURCE);
+
+    buildGrid();
+    resetState();
+    updateAll();
+
+    document.getElementById('stat-status').textContent = 'Ready';
+    document.getElementById('stat-status').style.color = '#8b949e';
+
+    // Step button
+    document.getElementById('btn-step').addEventListener('click', function() {
+        if (playing) stopPlay();
+        doStep();
+    });
+
+    // Play/Stop toggle
+    document.getElementById('btn-play').addEventListener('click', function() {
+        if (playing) stopPlay(); else startPlay();
+    });
+
+    // Reset button
+    document.getElementById('btn-reset').addEventListener('click', function() {
+        stopPlay();
+        resetState();
+        heatmapBuiltFor = '';  // force rebuild on next draw
+        updateAll();
+        document.getElementById('stat-loss').textContent = '\u2014';
+        document.getElementById('stat-w').textContent = '\u2014';
+        document.getElementById('stat-b').textContent = '\u2014';
+        document.getElementById('stat-status').textContent = 'Ready';
+        document.getElementById('stat-status').style.color = '#8b949e';
+        document.getElementById('console-out').textContent = '';
+        consoleLines = [];
+    });
+
+    // Delay slider display
+    document.getElementById('delay-slider').addEventListener('input', function() {
+        document.getElementById('delay-val').textContent = this.value + 'ms';
+    });
+
+    document.getElementById('pred-slider').addEventListener('input', updatePrediction);
+
+    // Resize handler
+    window.addEventListener('resize', function() {
+        heatmapBuiltFor = '';  // invalidate cache
+        updateAll();
+    });
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+
+</body>
+</html>
