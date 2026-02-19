@@ -233,20 +233,17 @@ canvas { border-radius: 4px; width: 100%; aspect-ratio: 4/3; display: block; bac
 // DX SOURCE CODE
 // ================================================================
 const DX_SOURCE = `type LinReg
-    w : Tensor[1 1]
-    b : Vec[1]
+    w : Float
+    b : Float
 
-fun LinReg'apply(x: Vec[1]) -> Vec[1]
-    me'w o x + me'b
+fun LinReg'apply(x: Float) -> Float
+    w * x + b
 
 model : LinReg(nn'init_normal(0.1))
 lr : 0.001
 
-X : [ [1] [2] [3] [4]
-      [5] [7] [8] [10] ]
-
-Y : [ [3.0] [4.5] [4.0] [5.5]
-      [6.0] [7.0] [8.5] [9.0] ]
+X : [1  2  3  4  5  7  8  10]
+Y : [3.0 4.5 4.0 5.5 6.0 7.0 8.5 9.0]
 
 for epoch in 0..2000
     total_loss : 0.0
@@ -309,70 +306,11 @@ function RngNormal() {
     return Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(6.2831853 * u2);
 }
 
-function Matmul(W, x, out, M, N) {
-    for (let i = 0; i < M; i++) {
-        let s = 0.0;
-        for (let j = 0; j < N; j++) s += W[i * N + j] * x[j];
-        out[i] = s;
-    }
-}
-function MatmulTranspose(W, x, out, M, N) {
-    out.fill(0);
-    for (let i = 0; i < M; i++)
-        for (let j = 0; j < N; j++) out[j] += W[i * N + j] * x[i];
-}
-function OuterProductAdd(a, b, out, M, N) {
-    for (let i = 0; i < M; i++)
-        for (let j = 0; j < N; j++) out[i * N + j] += a[i] * b[j];
-}
-function VecAdd(a, b, out, N) {
-    for (let i = 0; i < N; i++) out[i] = a[i] + b[i];
-}
-function MseForward(pred, target, N) {
-    let s = 0.0;
-    for (let i = 0; i < N; i++) { const d = pred[i] - target[i]; s += d * d; }
-    return s / N;
-}
-function MseBackward(pred, target, dPred, N) {
-    for (let i = 0; i < N; i++) dPred[i] = 2.0 * (pred[i] - target[i]) / N;
-}
-function SgdStep(params, grads, n, lr) {
-    for (let i = 0; i < n; i++) params[i] -= lr * grads[i];
-}
-
 // ================================================================
-// MODEL: LinReg (w: Tensor[1 1], b: Vec[1]) — 2 params
+// MODEL: LinReg (w: Float, b: Float) — 2 params
 // ================================================================
-function createLinReg() {
-    const _buf = new Float32Array(2);
-    return { _buf, w: _buf.subarray(0, 1), b: _buf.subarray(1, 2) };
-}
-function createLinRegGrad() {
-    const _buf = new Float32Array(2);
-    return { _buf, d_w: _buf.subarray(0, 1), d_b: _buf.subarray(1, 2) };
-}
-function createLinRegCache() {
-    return { wProj: new Float32Array(1), sum: new Float32Array(1) };
-}
-function LinRegForward(me, x, output, cache) {
-    Matmul(me.w, x, cache.wProj, 1, 1);       // wProj = w * x
-    VecAdd(cache.wProj, me.b, cache.sum, 1);   // sum = wProj + b
-    output.set(cache.sum);
-}
-function LinRegBackward(me, x, c, d_output, g, d_input) {
-    const d_sum = new Float32Array(1);
-    d_sum.set(d_output);
-    const d_wProj = new Float32Array(1);
-    d_wProj.set(d_sum);
-    // d_b += d_sum
-    g.d_b[0] += d_sum[0];
-    // d_w += d_wProj * x^T (outer product 1x1)
-    OuterProductAdd(d_wProj, x, g.d_w, 1, 1);
-    // d_input = W^T * d_wProj
-    if (d_input) MatmulTranspose(me.w, d_wProj, d_input, 1, 1);
-}
-function LinRegInit(obj, stddev) {
-    for (let i = 0; i < 2; i++) obj._buf[i] = RngNormal() * stddev;
+function createLinReg(stddev) {
+    return { w: RngNormal() * stddev, b: RngNormal() * stddev };
 }
 
 // ================================================================
@@ -381,25 +319,19 @@ function LinRegInit(obj, stddev) {
 const DATA_X = [1, 2, 3, 4, 5, 7, 8, 10];
 const DATA_Y = [3.0, 4.5, 4.0, 5.5, 6.0, 7.0, 8.5, 9.0];
 const N_SAMPLES = DATA_X.length;
-const TRAIN = DATA_X.map((x, i) => ({
-    x: new Float32Array([x]),
-    y: new Float32Array([DATA_Y[i]])
-}));
 
 // ================================================================
 // DEMO STATE
 // ================================================================
-let model, grad, cache, pred, dPred;
+let model;
 let epoch, losses, running, consoleLines;
 let lastGradW, lastGradB, lastDeltaW, lastDeltaB;
 
 function initState() {
-    model = createLinReg(); grad = createLinRegGrad(); cache = createLinRegCache();
-    pred = new Float32Array(1); dPred = new Float32Array(1);
+    RngSeed(42);
+    model = createLinReg(0.1);
     epoch = 0; losses = []; consoleLines = [];
     lastGradW = 0; lastGradB = 0; lastDeltaW = 0; lastDeltaB = 0;
-    RngSeed(42);
-    LinRegInit(model, 0.1);
 }
 
 const LR = 0.001;
@@ -407,31 +339,33 @@ const LR = 0.001;
 function trainOneEpoch() {
     let totalLoss = 0;
     let totalDw = 0, totalDb = 0;
-    const wBefore = model._buf[0];
-    const bBefore = model._buf[1];
+    const wBefore = model.w;
+    const bBefore = model.b;
 
-    for (const { x, y } of TRAIN) {
-        LinRegForward(model, x, pred, cache);
-        const loss = MseForward(pred, y, 1);
-        MseBackward(pred, y, dPred, 1);
-        grad._buf.fill(0);
-        LinRegBackward(model, x, cache, dPred, grad, null);
-        totalDw += grad.d_w[0];
-        totalDb += grad.d_b[0];
-        SgdStep(model._buf, grad._buf, 2, LR);
+    for (let i = 0; i < N_SAMPLES; i++) {
+        const x = DATA_X[i], y = DATA_Y[i];
+        const pred = model.w * x + model.b;
+        const diff = pred - y;
+        const loss = diff * diff;
+        const dw = 2 * diff * x;
+        const db = 2 * diff;
+        model.w -= LR * dw;
+        model.b -= LR * db;
+        totalDw += dw;
+        totalDb += db;
         totalLoss += loss;
     }
 
     lastGradW = totalDw;
     lastGradB = totalDb;
-    lastDeltaW = model._buf[0] - wBefore;
-    lastDeltaB = model._buf[1] - bBefore;
+    lastDeltaW = model.w - wBefore;
+    lastDeltaB = model.b - bBefore;
 
     return totalLoss;
 }
 
 function predictVal(hours) {
-    return model._buf[0] * hours + model._buf[1];
+    return model.w * hours + model.b;
 }
 
 // ================================================================
@@ -483,7 +417,7 @@ function drawScatter() {
     ctx.fillText('sufficienza', pad.left + 4, y6 - 3);
 
     // Regression line
-    const wVal = model._buf[0], bVal = model._buf[1];
+    const wVal = model.w, bVal = model.b;
     const rx0 = 0, rx1 = 12;
     const ry0 = wVal * rx0 + bVal, ry1 = wVal * rx1 + bVal;
     ctx.beginPath();
@@ -608,7 +542,7 @@ function gradColor(v) {
 }
 
 function updateGradPanel() {
-    const w = model._buf[0], b = model._buf[1];
+    const w = model.w, b = model.b;
     document.getElementById('grad-eq').innerHTML =
         `&#x177; = <span style="color:#79c0ff">${w.toFixed(4)}</span> &middot; x + <span style="color:#79c0ff">${b.toFixed(4)}</span>`;
     document.getElementById('val-w').textContent = w.toFixed(4);
@@ -688,7 +622,7 @@ function animate() {
         btn.disabled = false;
         document.getElementById('stat-status').textContent = 'Done';
         document.getElementById('stat-status').style.color = '#22c55e';
-        logLine(`\nRisultato: y = ${model._buf[0].toFixed(4)}x + ${model._buf[1].toFixed(4)}`);
+        logLine(`\nRisultato: y = ${model.w.toFixed(4)}x + ${model.b.toFixed(4)}`);
     } else {
         document.getElementById('stat-status').textContent = 'Training';
         document.getElementById('stat-status').style.color = '#eab308';
