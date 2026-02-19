@@ -35,7 +35,7 @@
 
       #v(0.1cm)
 
-      *Vincolo*: il centro del dipinto deve trovarsi *56 cm sopra* l'altezza degli occhi del visitatore medio.
+      *Vincolo*: il centro del dipinto deve trovarsi *56 cm sopra* l'altezza del visitatore medio.
     ]
 
     #v(0.3cm)
@@ -194,7 +194,7 @@
   content((-1.8, mu), anchor: "east",
     text(size: 9pt, weight: "bold", fill: viola)[175 cm])
   content((-1.8, mu - 0.55), anchor: "east",
-    text(size: 7pt, fill: luma(100))[altezza occhi])
+    text(size: 7pt, fill: luma(100))[altezza media])
 
   content((-1.8, paint-cy), anchor: "east",
     text(size: 9pt, weight: "bold", fill: blu)[231 cm])

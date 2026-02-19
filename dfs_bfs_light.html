@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DFS vs BFS — Confronto Visuale</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    background: #f5f5f5;
+    color: #24292e;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+}
+.top-bar {
+    width: 100%;
+    max-width: 1100px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+.top-left h1 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    color: #0550ae;
+    margin-bottom: 4px;
+}
+.top-left .subtitle {
+    font-size: 0.75rem;
+    color: #656d76;
+}
+.controls {
+    display: flex;
+    gap: 10px;
+}
+.controls button {
+    padding: 8px 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    font-family: inherit;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s, transform 0.1s;
+    color: #24292e;
+    background: #f6f8fa;
+}
+.controls button:hover {
+    background: #eaeef2;
+    border-color: #bbb;
+}
+.controls button:active { transform: scale(0.96); }
+#btnAuto.running { background: #ffebe9; border-color: #cf222e; color: #cf222e; }
+#btnAuto.running:hover { background: #ffd7d5; }
+#btnStep:disabled { opacity: 0.3; cursor: default; }
+
+.legend {
+    display: flex;
+    gap: 18px;
+    margin-bottom: 16px;
+    font-size: 0.72rem;
+    color: #656d76;
+    width: 100%;
+    max-width: 1100px;
+}
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+.legend-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 1.5px solid #d0d7de;
+}
+
+.container {
+    display: flex;
+    gap: 16px;
+    width: 100%;
+    max-width: 1100px;
+}
+.panel {
+    flex: 1;
+    background: #ffffff;
+    border: 1px solid #d0d7de;
+    border-radius: 10px;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.panel h2 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #24292e;
+    margin-bottom: 2px;
+}
+.panel .algo-desc {
+    font-size: 0.7rem;
+    color: #8b949e;
+    margin-bottom: 10px;
+}
+.tree-canvas {
+    width: 100%;
+    height: 320px;
+}
+.lists {
+    width: 100%;
+    margin-top: 12px;
+}
+.list-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+    min-height: 34px;
+}
+.list-label {
+    font-weight: 600;
+    font-size: 0.75rem;
+    width: 88px;
+    flex-shrink: 0;
+    color: #656d76;
+}
+.list-items {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+}
+.list-node {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.72rem;
+    color: #24292e;
+    border: 2px solid #d0d7de;
+    transition: all 0.3s;
+}
+.step-text {
+    width: 100%;
+    margin-top: 10px;
+    padding: 10px 14px;
+    background: #f6f8fa;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    color: #656d76;
+    min-height: 40px;
+    line-height: 1.4;
+}
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+    <div class="top-left">
+        <h1>DFS vs BFS</h1>
+        <p class="subtitle">Ricerca in profondita e in ampiezza su un albero binario, passo dopo passo</p>
+    </div>
+    <div class="controls">
+        <button id="btnReset">Reset</button>
+        <button id="btnAuto">Auto</button>
+        <button id="btnStep">Passo</button>
+    </div>
+</div>
+
+<div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#eaeef2"></div> Non visitato</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#fbca04"></div> In frontiera</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#fbca04;border-color:#cf222e"></div> Corrente</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#2da44e"></div> Esplorato</div>
+</div>
+
+<div class="container">
+    <div class="panel">
+        <h2>DFS — Depth-First Search</h2>
+        <p class="algo-desc">Figli aggiunti in testa (stack)</p>
+        <canvas class="tree-canvas" id="canvasDFS"></canvas>
+        <div class="lists">
+            <div class="list-row"><span class="list-label">Frontiera:</span><div class="list-items" id="frontierDFS"></div></div>
+            <div class="list-row"><span class="list-label">Esplorati:</span><div class="list-items" id="exploredDFS"></div></div>
+        </div>
+        <div class="step-text" id="stepDFS">Premi "Passo" o "Auto" per iniziare.</div>
+    </div>
+    <div class="panel">
+        <h2>BFS — Breadth-First Search</h2>
+        <p class="algo-desc">Figli aggiunti in coda (queue)</p>
+        <canvas class="tree-canvas" id="canvasBFS"></canvas>
+        <div class="lists">
+            <div class="list-row"><span class="list-label">Frontiera:</span><div class="list-items" id="frontierBFS"></div></div>
+            <div class="list-row"><span class="list-label">Esplorati:</span><div class="list-items" id="exploredBFS"></div></div>
+        </div>
+        <div class="step-text" id="stepBFS">Premi "Passo" o "Auto" per iniziare.</div>
+    </div>
+</div>
+
+<script>
+const tree = {
+    A: ['B', 'C'], B: ['D', 'E'], C: ['F', 'G'],
+    D: ['H', 'I'], E: [], F: [], G: ['J', 'K'],
+    H: [], I: [], J: [], K: []
+};
+const allNodes = ['A','B','C','D','E','F','G','H','I','J','K'];
+const NODE_DEFAULT = '#eaeef2';
+
+function computePositions(w, h) {
+    const padX = 30, padTop = 30, padBot = 20;
+    const usableW = w - 2 * padX;
+    const usableH = h - padTop - padBot;
+    const ly = i => padTop + (usableH / 3) * i;
+    const levels = [['A'], ['B','C'], ['D','E','F','G'], ['H','I','J','K']];
+    const pos = {};
+    for (let li = 0; li < levels.length; li++) {
+        const nodes = levels[li];
+        const y = ly(li);
+        for (let ni = 0; ni < nodes.length; ni++) {
+            const x = padX + usableW * (ni + 0.5) / nodes.length;
+            pos[nodes[ni]] = { x, y };
+        }
+    }
+    return pos;
+}
+
+function createState() {
+    return {
+        frontier: ['A'], explored: [], current: null, done: false,
+        stepDesc: 'Nodo A in frontiera. Premi per iniziare.'
+    };
+}
+
+let dfs = createState();
+let bfs = createState();
+let autoTimer = null;
+
+function step(state, isDFS) {
+    if (state.done) return;
+    state.current = null;
+    if (state.frontier.length === 0) {
+        state.done = true;
+        state.stepDesc = 'Esplorazione completata!';
+        return;
+    }
+    const node = state.frontier.shift();
+    state.current = node;
+    state.explored.push(node);
+    const children = (tree[node] || []).filter(
+        c => !state.explored.includes(c) && !state.frontier.includes(c)
+    );
+    if (isDFS) {
+        state.frontier = [...children, ...state.frontier];
+    } else {
+        state.frontier = [...state.frontier, ...children];
+    }
+    const childStr = children.length > 0 ? children.join(', ') : 'nessuno';
+    const structName = isDFS ? 'testa (stack)' : 'coda (queue)';
+    state.stepDesc = `Estraggo ${node}. Figli: ${childStr} → ${structName}.`;
+}
+
+function nodeColor(name, state) {
+    if (state.explored.includes(name)) return '#2da44e';
+    if (state.frontier.includes(name)) return '#fbca04';
+    return NODE_DEFAULT;
+}
+
+function drawTree(canvasId, state) {
+    const canvas = document.getElementById(canvasId);
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.scale(dpr, dpr);
+    const w = rect.width, h = rect.height;
+    ctx.clearRect(0, 0, w, h);
+
+    const pos = computePositions(w, h);
+    const R = 20;
+
+    // Edges
+    ctx.strokeStyle = '#d0d7de';
+    ctx.lineWidth = 2;
+    for (const parent of allNodes) {
+        for (const child of (tree[parent] || [])) {
+            const p = pos[parent], c = pos[child];
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(c.x, c.y);
+            ctx.stroke();
+        }
+    }
+
+    // Nodes
+    for (const name of allNodes) {
+        const p = pos[name];
+        const fill = nodeColor(name, state);
+        const isCurrent = state.current === name;
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, R, 0, Math.PI * 2);
+        ctx.fillStyle = fill;
+        ctx.fill();
+        ctx.lineWidth = isCurrent ? 3 : 1.5;
+        ctx.strokeStyle = isCurrent ? '#cf222e' : '#bbb';
+        ctx.stroke();
+
+        const isDefault = fill === NODE_DEFAULT;
+        const isGreen = fill === '#2da44e';
+        ctx.fillStyle = isDefault ? '#8b949e' : isGreen ? '#fff' : '#24292e';
+        ctx.font = "700 14px 'SF Mono', 'Fira Code', 'Consolas', monospace";
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(name, p.x, p.y);
+    }
+}
+
+function renderList(containerId, items, state) {
+    const el = document.getElementById(containerId);
+    el.innerHTML = '';
+    for (const name of items) {
+        const div = document.createElement('div');
+        div.className = 'list-node';
+        div.textContent = name;
+        const fill = nodeColor(name, state);
+        div.style.background = fill;
+        const isGreen = fill === '#2da44e';
+        div.style.color = isGreen ? '#fff' : '#24292e';
+        if (state.current === name) {
+            div.style.borderColor = '#cf222e';
+        }
+        el.appendChild(div);
+    }
+}
+
+function render() {
+    drawTree('canvasDFS', dfs);
+    drawTree('canvasBFS', bfs);
+    renderList('frontierDFS', dfs.frontier, dfs);
+    renderList('exploredDFS', dfs.explored, dfs);
+    renderList('frontierBFS', bfs.frontier, bfs);
+    renderList('exploredBFS', bfs.explored, bfs);
+    document.getElementById('stepDFS').textContent = dfs.stepDesc;
+    document.getElementById('stepBFS').textContent = bfs.stepDesc;
+    document.getElementById('btnStep').disabled = dfs.done && bfs.done;
+}
+
+function doStep() {
+    step(dfs, true);
+    step(bfs, false);
+    render();
+    if (dfs.done && bfs.done && autoTimer) stopAuto();
+}
+
+function reset() {
+    stopAuto();
+    dfs = createState();
+    bfs = createState();
+    render();
+}
+
+function stopAuto() {
+    if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+    const btn = document.getElementById('btnAuto');
+    btn.textContent = 'Auto';
+    btn.classList.remove('running');
+}
+
+function toggleAuto() {
+    if (autoTimer) { stopAuto(); return; }
+    if (dfs.done && bfs.done) return;
+    const btn = document.getElementById('btnAuto');
+    btn.textContent = 'Stop';
+    btn.classList.add('running');
+    autoTimer = setInterval(doStep, 500);
+}
+
+document.getElementById('btnReset').addEventListener('click', reset);
+document.getElementById('btnAuto').addEventListener('click', toggleAuto);
+document.getElementById('btnStep').addEventListener('click', doStep);
+render();
+window.addEventListener('resize', render);
+</script>
+</body>
+</html>

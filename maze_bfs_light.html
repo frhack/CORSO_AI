@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Maze BFS</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f5f5f5; color: #24292e;
+    height: 100vh; overflow: hidden;
+}
+
+/* --- Two-panel layout --- */
+main {
+    display: grid;
+    grid-template-columns: 420px 1fr;
+    height: 100vh;
+}
+@media (max-width: 900px) {
+    main { grid-template-columns: 1fr; }
+    .code-panel { max-height: 35vh; }
+}
+
+/* --- Left: code editor --- */
+.code-panel {
+    border-right: 1px solid #d0d7de;
+    display: flex;
+    flex-direction: column;
+    background: #ffffff;
+    overflow: hidden;
+}
+.panel-header {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 11px; color: #656d76; text-transform: uppercase;
+    letter-spacing: 1px; padding: 10px 16px 8px;
+    border-bottom: 1px solid #d0d7de; background: #f6f8fa;
+    flex-shrink: 0;
+    display: flex; align-items: center; gap: 12px;
+}
+.panel-header .filename { color: #656d76; }
+.panel-header .lang { color: #0550ae; font-size: 9px; background: rgba(5,80,174,0.08); padding: 2px 6px; border-radius: 3px; }
+
+.editor-wrap {
+    position: relative;
+    flex: 1;
+    overflow: hidden;
+}
+.editor-wrap pre, .editor-wrap textarea {
+    font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Menlo', 'Consolas', monospace;
+    font-size: 12.5px; line-height: 1.55; padding: 12px 16px;
+    tab-size: 4; margin: 0; border: none; outline: none;
+    white-space: pre; overflow: auto;
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+}
+.editor-highlight {
+    background: #ffffff; color: #24292e; pointer-events: none; z-index: 0;
+}
+.editor-textarea {
+    background: transparent; color: transparent; caret-color: #24292e;
+    z-index: 1; resize: none; -webkit-text-fill-color: transparent;
+}
+
+/* Syntax classes */
+.kw { color: #cf222e; }
+.ty { color: #0550ae; }
+.fn { color: #8250df; }
+.num { color: #0550ae; }
+.str { color: #0a3069; }
+.cm { color: #6e7781; font-style: italic; }
+.pr { color: #953800; font-weight: 600; }
+.op { color: #cf222e; }
+
+/* --- Right: maze viz --- */
+.viz-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #f5f5f5;
+}
+
+.top-bar {
+    padding: 10px 20px;
+    background: #f6f8fa;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    border-bottom: 1px solid #d0d7de;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+.top-bar .title {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.82rem;
+    color: #656d76;
+    letter-spacing: 0.5px;
+}
+.top-bar .stats {
+    display: flex;
+    gap: 20px;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.75rem;
+}
+.top-bar .stat-label { color: #8b949e; margin-right: 5px; }
+.top-bar .stat-val { font-weight: 600; }
+.stat-val.path-len { color: #cf222e; }
+.stat-val.explored { color: #2da44e; }
+.stat-val.grid-size { color: #0550ae; }
+
+.controls {
+    margin-left: auto;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+button {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    background: #f6f8fa;
+    color: #24292e;
+    border: 1px solid #d0d7de;
+    padding: 5px 14px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+button:hover { background: #eaeef2; border-color: #bbb; }
+button.active { background: #dafbe1; border-color: #2da44e; color: #1a7f37; }
+
+.slider-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.slider-group label {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    color: #8b949e;
+    font-size: 0.72rem;
+}
+input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 80px;
+    height: 3px;
+    background: #d0d7de;
+    border-radius: 2px;
+    outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px; height: 12px;
+    background: #0550ae;
+    border-radius: 50%;
+    cursor: pointer;
+}
+input[type="range"]::-moz-range-thumb {
+    width: 12px; height: 12px;
+    background: #0550ae;
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+}
+
+.canvas-wrap {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+}
+.canvas-wrap canvas {
+    position: absolute;
+    top: 0; left: 0;
+}
+
+/* --- Console output --- */
+.console-bar {
+    border-top: 1px solid #d0d7de;
+    background: #f6f8fa;
+    padding: 8px 16px;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 11px;
+    color: #1a7f37;
+    max-height: 90px;
+    overflow-y: auto;
+    white-space: pre;
+    flex-shrink: 0;
+}
+</style>
+</head>
+<body>
+
+<main>
+    <!-- Left panel: code editor -->
+    <section class="code-panel">
+        <div class="panel-header"></div>
+        <div class="editor-wrap">
+            <pre class="editor-highlight" id="editor-highlight"></pre>
+            <textarea class="editor-textarea" id="source-editor" spellcheck="false"></textarea>
+        </div>
+    </section>
+
+    <!-- Right panel: maze viz -->
+    <section class="viz-panel">
+        <div class="top-bar">
+            <span class="title">maze &middot; <span id="s-algo">bfs</span></span>
+            <div class="stats">
+                <span><span class="stat-label">grid</span><span class="stat-val grid-size" id="s-grid">20x20</span></span>
+                <span><span class="stat-label">path</span><span class="stat-val path-len" id="s-path">-</span></span>
+                <span><span class="stat-label">explored</span><span class="stat-val explored" id="s-explored">-</span></span>
+            </div>
+            <div class="controls">
+                <div class="slider-group">
+                    <label>size</label>
+                    <input type="range" id="sizeSlider" min="5" max="40" step="1" value="20">
+                </div>
+                <div class="slider-group">
+                    <label>speed</label>
+                    <input type="range" id="speedSlider" min="1" max="100" step="1" value="50">
+                </div>
+                <button id="btnNew">new maze</button>
+                <button id="btnSolve">solve</button>
+                <button id="btnStep">step</button>
+            </div>
+        </div>
+
+        <div class="canvas-wrap">
+            <canvas id="maze"></canvas>
+        </div>
+
+        <div class="console-bar" id="console-out" style="display:none"></div>
+    </section>
+</main>
+
+<script>
+const PY_SOURCE = `Edge = tuple
+
+def edge(A, B):
+    return Edge(sorted([A, B]))
+
+def confini(square):
+    """The 4 neighbors of an (x, y) square."""
+    (x, y) = square
+    return {(x + 1, y), (x - 1, y),
+            (x, y + 1), (x, y - 1)}
+
+def cerca(maze, frontier):
+    start = (0, 0)
+    uscite = {
+        (maze.width - 1, maze.height - 1),
+        (maze.width - 1, 0),
+        (0, maze.height - 1)
+    }
+    frontier.put(start)
+    paths = {start: [start]}
+    while frontier:
+        s = frontier.pop()
+        if s in uscite:
+            return paths[s]
+        for snew in confini(s):
+            if snew not in paths \\
+               and edge(s, snew) in maze.edges:
+                frontier.put(snew)
+                paths[snew] = paths[s] + [snew]
+
+soluzione = cerca(maze, Stack())`;
+
+function highlightPy(code) {
+    let h = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return h.split('\n').map(line => {
+        const tokens = [];
+        let cp = line;
+        let comment = '';
+        const cmIdx = cp.indexOf('#');
+        if (cmIdx >= 0) { comment = '<span class="cm">' + cp.slice(cmIdx) + '</span>'; cp = cp.slice(0, cmIdx); }
+        cp = cp.replace(/(""".*?"""|"(?:[^"\\]|\\.)*?"|'(?:[^'\\]|\\.)*?')/g, m => {
+            const cls = m.startsWith('"""') ? 'cm' : 'str';
+            tokens.push('<span class="' + cls + '">' + m + '</span>');
+            return '\x00T' + (tokens.length - 1) + '\x00';
+        });
+        cp = cp.replace(/\b(def|class|return|if|elif|else|for|while|in|and|or|not|import|from|as|with|try|except|raise|pass|break|continue|lambda|yield)\b/g, '<span class="kw">$1</span>');
+        cp = cp.replace(/\b(tuple|set|dict|list|sorted|len|range|print|True|False|None|Stack|Queue)\b/g, '<span class="ty">$1</span>');
+        cp = cp.replace(/(<span class="kw">def<\/span>\s+)(\w+)/g, '$1<span class="fn">$2</span>');
+        cp = cp.replace(/\b(self|cls)\b/g, '<span class="pr">$1</span>');
+        cp = cp.replace(/\.(\w+)\(/g, '.<span class="fn">$1</span>(');
+        cp = cp.replace(/\b(\d+\.?\d*)\b/g, '<span class="num">$1</span>');
+        cp = cp.replace(/\x00T(\d+)\x00/g, (_, i) => tokens[+i]);
+        return cp + comment;
+    }).join('\n');
+}
+
+function syncHighlight() {
+    const ta = document.getElementById('source-editor');
+    const pre = document.getElementById('editor-highlight');
+    pre.innerHTML = highlightPy(ta.value) + '\n';
+}
+
+function syncScroll() {
+    const ta = document.getElementById('source-editor');
+    const pre = document.getElementById('editor-highlight');
+    pre.scrollTop = ta.scrollTop;
+    pre.scrollLeft = ta.scrollLeft;
+}
+
+const editor = document.getElementById('source-editor');
+editor.value = PY_SOURCE;
+editor.addEventListener('input', syncHighlight);
+editor.addEventListener('scroll', syncScroll);
+syncHighlight();
+
+function edgeKey(a, b) {
+    const [x1,y1] = a, [x2,y2] = b;
+    if (x1 < x2 || (x1 === x2 && y1 < y2)) return `${x1},${y1}|${x2},${y2}`;
+    return `${x2},${y2}|${x1},${y1}`;
+}
+
+function neighbors4(x, y) {
+    return [[x+1,y],[x-1,y],[x,y+1],[x,y-1]];
+}
+
+function generateMaze(W, H) {
+    const edges = new Set();
+    const visited = new Set();
+    const key = (x,y) => `${x},${y}`;
+    const startX = Math.floor(Math.random() * W);
+    const startY = Math.floor(Math.random() * H);
+    visited.add(key(startX, startY));
+    const frontier = [[startX, startY]];
+
+    while (frontier.length > 0) {
+        const idx = frontier.length - 1;
+        const [cx, cy] = frontier[idx];
+        const nbrs = neighbors4(cx, cy).filter(([nx,ny]) =>
+            nx >= 0 && nx < W && ny >= 0 && ny < H && !visited.has(key(nx,ny))
+        );
+        if (nbrs.length > 0) {
+            const [nx, ny] = nbrs[Math.floor(Math.random() * nbrs.length)];
+            edges.add(edgeKey([cx,cy],[nx,ny]));
+            visited.add(key(nx,ny));
+            frontier.push([cx, cy]);
+            frontier.push([nx, ny]);
+        } else {
+            if (Math.random() < 0.1) {
+                const allNbrs = neighbors4(cx, cy).filter(([nx,ny]) =>
+                    nx >= 0 && nx < W && ny >= 0 && ny < H);
+                if (allNbrs.length > 0) {
+                    const [nx, ny] = allNbrs[Math.floor(Math.random() * allNbrs.length)];
+                    edges.add(edgeKey([cx,cy],[nx,ny]));
+                }
+            }
+            frontier.splice(idx, 1);
+        }
+    }
+    return { width: W, height: H, edges };
+}
+
+function parseFrontierType() {
+    const src = document.getElementById('source-editor').value;
+    const m = src.match(/cerca\s*\(\s*maze\s*,\s*(Stack|Queue)\s*\(\s*\)\s*\)/);
+    if (m) return m[1];
+    return 'Queue';
+}
+
+function solve(maze, start, goals, mode) {
+    const W = maze.width, H = maze.height;
+    const key = (x,y) => `${x},${y}`;
+    const goalSet = new Set(goals.map(([x,y]) => key(x,y)));
+    const useBFS = (mode === 'Queue');
+
+    const frontier = [start];
+    const parent = new Map();
+    const visited = new Set();
+    visited.add(key(start[0], start[1]));
+    const exploredOrder = [];
+
+    while (frontier.length > 0) {
+        const cell = useBFS ? frontier.shift() : frontier.pop();
+        const [cx, cy] = cell;
+        exploredOrder.push([cx, cy]);
+
+        if (goalSet.has(key(cx, cy))) {
+            const path = [];
+            let cur = [cx, cy];
+            while (cur) {
+                path.push(cur);
+                cur = parent.get(key(cur[0], cur[1]));
+            }
+            path.reverse();
+            return { path, explored: exploredOrder, goalReached: [cx, cy], mode };
+        }
+
+        for (const [nx, ny] of neighbors4(cx, cy)) {
+            if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
+            if (visited.has(key(nx, ny))) continue;
+            if (!maze.edges.has(edgeKey([cx,cy],[nx,ny]))) continue;
+            visited.add(key(nx, ny));
+            parent.set(key(nx, ny), [cx, cy]);
+            frontier.push([nx, ny]);
+        }
+    }
+    return { path: [], explored: exploredOrder, goalReached: null, mode };
+}
+
+const canvas = document.getElementById('maze');
+const ctx = canvas.getContext('2d');
+let maze, solution;
+
+function resize() {
+    const wrap = canvas.parentElement;
+    const dpr = window.devicePixelRatio || 1;
+    const w = wrap.clientWidth;
+    const h = wrap.clientHeight;
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function drawMaze(maze, explored, exploredCount, path, pathCount) {
+    const W = maze.width, H = maze.height;
+    const cw = canvas.width / (window.devicePixelRatio || 1);
+    const ch = canvas.height / (window.devicePixelRatio || 1);
+
+    const pad = 24;
+    const availW = cw - 2 * pad;
+    const availH = ch - 2 * pad;
+    const cellSize = Math.min(availW / W, availH / H);
+    const mazeW = cellSize * W;
+    const mazeH = cellSize * H;
+    const offX = (cw - mazeW) / 2;
+    const offY = (ch - mazeH) / 2;
+
+    ctx.clearRect(0, 0, cw, ch);
+
+    // Background
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(offX, offY, mazeW, mazeH);
+
+    // Explored cells (green)
+    if (explored && exploredCount > 0) {
+        const count = Math.min(exploredCount, explored.length);
+        for (let i = 0; i < count; i++) {
+            const [ex, ey] = explored[i];
+            const alpha = 0.08 + 0.12 * (i / Math.max(count, 1));
+            ctx.fillStyle = `rgba(45, 164, 78, ${alpha})`;
+            ctx.fillRect(offX + ex * cellSize, offY + ey * cellSize, cellSize, cellSize);
+        }
+    }
+
+    // Path cells (red tint)
+    if (path && pathCount > 0) {
+        const count = Math.min(pathCount, path.length);
+        for (let i = 0; i < count; i++) {
+            const [px, py] = path[i];
+            ctx.fillStyle = 'rgba(207, 34, 46, 0.12)';
+            ctx.fillRect(offX + px * cellSize, offY + py * cellSize, cellSize, cellSize);
+        }
+    }
+
+    // Mark start and exits
+    const start = [0, 0];
+    const exits = [[W-1, H-1], [W-1, 0], [0, H-1]];
+
+    ctx.fillStyle = 'rgba(5, 80, 174, 0.15)';
+    ctx.fillRect(offX + start[0]*cellSize, offY + start[1]*cellSize, cellSize, cellSize);
+
+    for (const [ex, ey] of exits) {
+        ctx.fillStyle = 'rgba(207, 34, 46, 0.12)';
+        ctx.fillRect(offX + ex * cellSize, offY + ey * cellSize, cellSize, cellSize);
+    }
+
+    // Walls
+    ctx.strokeStyle = '#8b949e';
+    ctx.lineWidth = Math.max(1.5, cellSize / 12);
+    ctx.lineCap = 'round';
+
+    const exitEdges = new Set();
+    exitEdges.add(edgeKey([0,0],[0,-1]));
+    exitEdges.add(edgeKey([W-1,H-1],[W-1,H]));
+    exitEdges.add(edgeKey([W-1,0],[W,0]));
+    exitEdges.add(edgeKey([0,H-1],[0,H]));
+
+    const allEdges = new Set([...maze.edges, ...exitEdges]);
+
+    for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+            for (const [nx, ny] of neighbors4(x, y)) {
+                if (!allEdges.has(edgeKey([x,y],[nx,ny]))) {
+                    drawWall(ctx, x, y, nx, ny, offX, offY, cellSize);
+                }
+            }
+        }
+    }
+
+    // Path line (red)
+    if (path && pathCount > 1) {
+        const count = Math.min(pathCount, path.length);
+        ctx.strokeStyle = '#cf222e';
+        ctx.lineWidth = Math.max(2, cellSize / 5);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        for (let i = 0; i < count; i++) {
+            const sx = offX + path[i][0] * cellSize + cellSize / 2;
+            const sy = offY + path[i][1] * cellSize + cellSize / 2;
+            if (i === 0) ctx.moveTo(sx, sy);
+            else ctx.lineTo(sx, sy);
+        }
+        ctx.stroke();
+    }
+
+    // Start marker
+    {
+        const sx = offX + start[0] * cellSize + cellSize / 2;
+        const sy = offY + start[1] * cellSize + cellSize / 2;
+        const r = Math.max(3, cellSize / 4);
+        ctx.fillStyle = '#0550ae';
+        ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = `bold ${Math.max(8, cellSize * 0.35)}px SF Mono, Consolas, monospace`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('S', sx, sy + 0.5);
+    }
+
+    // Exit markers
+    for (const [ex, ey] of exits) {
+        const sx = offX + ex * cellSize + cellSize / 2;
+        const sy = offY + ey * cellSize + cellSize / 2;
+        const r = Math.max(3, cellSize / 4);
+        const isReached = solution && solution.goalReached &&
+            solution.goalReached[0] === ex && solution.goalReached[1] === ey;
+        ctx.fillStyle = isReached ? '#cf222e' : 'rgba(207,34,46,0.4)';
+        ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = `bold ${Math.max(8, cellSize * 0.35)}px SF Mono, Consolas, monospace`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('E', sx, sy + 0.5);
+    }
+}
+
+function drawWall(ctx, x1, y1, x2, y2, offX, offY, cs) {
+    if (x1 === x2) {
+        const wy = Math.max(y1, y2);
+        ctx.beginPath();
+        ctx.moveTo(offX + x1 * cs, offY + wy * cs);
+        ctx.lineTo(offX + (x1 + 1) * cs, offY + wy * cs);
+        ctx.stroke();
+    } else {
+        const wx = Math.max(x1, x2);
+        ctx.beginPath();
+        ctx.moveTo(offX + wx * cs, offY + y1 * cs);
+        ctx.lineTo(offX + wx * cs, offY + (y1 + 1) * cs);
+        ctx.stroke();
+    }
+}
+
+function consoleLog(text) {
+    const el = document.getElementById('console-out');
+    el.textContent = text;
+    el.scrollTop = el.scrollHeight;
+}
+
+function formatPath(sol) {
+    if (!sol || !sol.path.length) return 'No path found.';
+    const algo = sol.mode === 'Queue' ? 'BFS' : 'DFS';
+    const lines = [`${algo} path (${sol.path.length} steps, ${sol.explored.length} explored):`];
+    for (const [x, y] of sol.path) {
+        lines.push(`  (${x}, ${y})`);
+    }
+    return lines.join('\n');
+}
+
+let stepper = null;
+let animating = false;
+let animId = null;
+
+function ensureSolution() {
+    if (solution) return true;
+    const mode = parseFrontierType();
+    const algoName = mode === 'Queue' ? 'bfs' : 'dfs';
+    document.getElementById('s-algo').textContent = algoName;
+
+    const start = [0, 0];
+    const goals = [[maze.width-1, maze.height-1], [maze.width-1, 0], [0, maze.height-1]];
+    solution = solve(maze, start, goals, mode);
+    if (!solution.path.length) { consoleLog('No path found.'); return false; }
+
+    stepper = {
+        phase: 'explore',
+        exploreCount: 0,
+        pathCount: 0,
+        totalExplored: solution.explored.length,
+        totalPath: solution.path.length,
+        algoName
+    };
+    consoleLog(`${algoName.toUpperCase()} (frontier = ${mode})`);
+    return true;
+}
+
+function redrawStepper() {
+    const st = stepper;
+    if (st.phase === 'explore') {
+        drawMaze(maze, solution.explored, st.exploreCount, null, 0);
+        document.getElementById('s-explored').textContent = st.exploreCount;
+        document.getElementById('s-path').textContent = '-';
+    } else {
+        drawMaze(maze, solution.explored, st.totalExplored, solution.path, st.pathCount);
+        document.getElementById('s-explored').textContent = st.totalExplored + ' cells';
+        document.getElementById('s-path').textContent = st.pathCount >= st.totalPath
+            ? `${st.totalPath} steps` : `${st.pathCount}...`;
+    }
+}
+
+function isFinished() {
+    return stepper && stepper.phase === 'path' && stepper.pathCount >= stepper.totalPath;
+}
+
+function finishSolve() {
+    document.getElementById('s-path').textContent = stepper.totalPath + ' steps';
+    document.getElementById('s-explored').textContent = stepper.totalExplored + ' cells';
+    consoleLog(formatPath(solution));
+}
+
+function stopAnimation() {
+    if (animId) clearTimeout(animId);
+    animating = false;
+    animId = null;
+    document.getElementById('btnSolve').classList.remove('active');
+    document.getElementById('btnSolve').textContent = 'solve';
+}
+
+function startSolve() {
+    if (animating) {
+        stopAnimation();
+        if (solution && stepper) {
+            stepper.exploreCount = stepper.totalExplored;
+            stepper.phase = 'path';
+            stepper.pathCount = stepper.totalPath;
+            redrawStepper();
+            finishSolve();
+        }
+        return;
+    }
+
+    if (!ensureSolution()) return;
+
+    if (isFinished()) {
+        solution = null; stepper = null;
+        if (!ensureSolution()) return;
+    }
+
+    animating = true;
+    document.getElementById('btnSolve').classList.add('active');
+    document.getElementById('btnSolve').textContent = 'stop';
+
+    const speedVal = parseInt(document.getElementById('speedSlider').value);
+    const delay = Math.max(0, Math.round(100 - speedVal));
+    const cellsPerTick = Math.max(1, Math.floor(speedVal / 20));
+
+    function animate() {
+        if (!animating) return;
+        const st = stepper;
+
+        if (st.phase === 'explore') {
+            st.exploreCount = Math.min(st.exploreCount + cellsPerTick, st.totalExplored);
+            if (st.exploreCount >= st.totalExplored) st.phase = 'path';
+        } else {
+            st.pathCount = Math.min(st.pathCount + cellsPerTick, st.totalPath);
+            if (st.pathCount >= st.totalPath) {
+                redrawStepper();
+                finishSolve();
+                stopAnimation();
+                return;
+            }
+        }
+        redrawStepper();
+        animId = setTimeout(animate, delay);
+    }
+    animId = setTimeout(animate, delay);
+}
+
+function doStep() {
+    if (animating) stopAnimation();
+
+    if (!ensureSolution()) return;
+
+    if (isFinished()) return;
+
+    const st = stepper;
+    if (st.phase === 'explore') {
+        st.exploreCount = Math.min(st.exploreCount + 1, st.totalExplored);
+        if (st.exploreCount >= st.totalExplored) {
+            st.phase = 'path';
+            st.pathCount = st.totalPath;
+            redrawStepper();
+            finishSolve();
+            return;
+        }
+    } else {
+        st.pathCount = Math.min(st.pathCount + 1, st.totalPath);
+        if (st.pathCount >= st.totalPath) {
+            redrawStepper();
+            finishSolve();
+            return;
+        }
+    }
+    redrawStepper();
+}
+
+function newMaze() {
+    stopAnimation();
+    solution = null;
+    stepper = null;
+    const size = parseInt(document.getElementById('sizeSlider').value);
+    maze = generateMaze(size, size);
+    document.getElementById('s-grid').textContent = `${size}x${size}`;
+    document.getElementById('s-path').textContent = '-';
+    document.getElementById('s-explored').textContent = '-';
+    consoleLog(`Generated ${size}x${size} maze.`);
+    drawMaze(maze, null, 0, null, 0);
+}
+
+document.getElementById('btnNew').addEventListener('click', newMaze);
+document.getElementById('btnSolve').addEventListener('click', startSolve);
+document.getElementById('btnStep').addEventListener('click', doStep);
+document.getElementById('sizeSlider').addEventListener('input', newMaze);
+
+window.addEventListener('resize', () => {
+    resize();
+    if (stepper && solution && !animating) {
+        redrawStepper();
+    } else if (maze) {
+        drawMaze(maze, null, 0, null, 0);
+    }
+});
+
+document.addEventListener('keydown', (e) => {
+    if (document.activeElement === editor) return;
+    if (e.key === 'n' || e.key === 'N') newMaze();
+    if (e.key === ' ' || e.key === 's' || e.key === 'S') { e.preventDefault(); startSolve(); }
+    if (e.key === '.' || e.key === 'ArrowRight') { e.preventDefault(); doStep(); }
+});
+
+resize();
+newMaze();
+</script>
+
+</body>
+</html>

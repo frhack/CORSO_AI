@@ -26,38 +26,38 @@
   columns: (1fr, 1fr),
   gutter: 0.8cm,
   [
-    #box(stroke: 1.5pt + blu, radius: 6pt, fill: blu.lighten(95%), inset: 10pt, width: 100%)[
-      #text(size: 11pt, weight: "bold", fill: blu)[Le dimensioni]
-      #v(0.1cm)
+    #box(stroke: 1.5pt + blu, radius: 6pt, fill: blu.lighten(95%), inset: 7pt, width: 100%)[
+      #text(size: 10pt, weight: "bold", fill: blu)[Le dimensioni]
+      #v(0.05cm)
 
       #grid(
         columns: (auto, 1fr),
         gutter: 0.3cm,
-        row-gutter: 0.15cm,
-        text(size: 10pt, weight: "bold")[Transistor:],
-        text(size: 10pt)[~50 nm],
-        text(size: 10pt, weight: "bold")[Atomo di Si:],
-        text(size: 10pt)[~0.23 nm],
+        row-gutter: 0.1cm,
+        text(size: 9.5pt, weight: "bold")[Transistor:],
+        text(size: 9.5pt)[~50 nm],
+        text(size: 9.5pt, weight: "bold")[Atomo di Si:],
+        text(size: 9.5pt)[~0.23 nm],
       )
 
-      #v(0.1cm)
+      #v(0.05cm)
 
       #align(center)[
-        #box(stroke: 1pt + blu, radius: 4pt, fill: blu.lighten(88%), inset: 8pt)[
-          #text(size: 11pt)[Un transistor $approx$ #text(weight: "bold")[meno di 300 atomi] di silicio]
+        #box(stroke: 1pt + blu, radius: 4pt, fill: blu.lighten(88%), inset: 6pt)[
+          #text(size: 10pt)[Un transistor $approx$ #text(weight: "bold")[meno di 300 atomi] di silicio]
         ]
       ]
     ]
 
-    #v(0.15cm)
+    #v(0.1cm)
 
-    #box(stroke: 1.5pt + viola, radius: 6pt, fill: viola.lighten(95%), inset: 10pt, width: 100%)[
-      #text(size: 11pt, weight: "bold", fill: viola)[Per confronto...]
+    #box(stroke: 1.5pt + viola, radius: 6pt, fill: viola.lighten(95%), inset: 7pt, width: 100%)[
+      #text(size: 10pt, weight: "bold", fill: viola)[Per confronto...]
       #v(0.05cm)
-      #text(size: 10pt)[
+      #text(size: 9.5pt)[
         Un singolo transistor moderno ha le dimensioni di un *virus di medie dimensioni* (50–100 nm).
       ]
-      #v(0.1cm)
+      #v(0.05cm)
       #align(center)[
         #grid(
           columns: (auto, auto, auto, auto, auto),
@@ -72,11 +72,11 @@
       ]
     ]
 
-    #v(0.15cm)
+    #v(0.1cm)
 
-    #box(stroke: 1.5pt + arancio, radius: 6pt, fill: arancio.lighten(93%), inset: 8pt, width: 100%)[
-      #text(size: 10pt, weight: "bold", fill: arancio.darken(10%))[Oggi (2026)] #h(0.3cm)
-      #text(size: 10pt)[Un chip AI top di gamma: *80–150 miliardi* di transistor.]
+    #box(stroke: 1.5pt + arancio, radius: 6pt, fill: arancio.lighten(93%), inset: 6pt, width: 100%)[
+      #text(size: 9.5pt, weight: "bold", fill: arancio.darken(10%))[Oggi (2026)] #h(0.3cm)
+      #text(size: 9.5pt)[Un chip AI top di gamma: *80–150 miliardi* di transistor.]
     ]
   ],
   [
@@ -87,7 +87,44 @@
 #pagebreak()
 
 // ============================================================
-// SLIDE 2 — Proiezioni al 2030: packaging 3D
+// SLIDE 2 — Dal primo transistor al chip AI
+// ============================================================
+
+#align(center)[
+  #text(size: 18pt, weight: "bold")[Legge di Moore — La Scala del Transistor]
+  #v(0.05cm)
+  #text(size: 12pt, fill: luma(80))[Quanto è piccolo un transistor moderno?]
+]
+
+#v(0.4cm)
+
+#grid(
+  columns: (1fr, 1fr),
+  gutter: 1.5cm,
+  [
+    #align(center)[
+      #image("transistor_1947.jpg", height: 7.5cm)
+      #v(0.15cm)
+      #text(size: 11pt, weight: "bold")[Primo transistor (1947)]
+      #v(0.05cm)
+      #text(size: 9.5pt, fill: luma(80))[Replica — Bell Labs, 23 dicembre 1947]
+    ]
+  ],
+  [
+    #align(center)[
+      #image("h100.png", height: 7.5cm)
+      #v(0.15cm)
+      #text(size: 11pt, weight: "bold")[NVIDIA H100 (2024)]
+      #v(0.05cm)
+      #text(size: 9.5pt, fill: luma(80))[*80–150 miliardi* di transistor]
+    ]
+  ],
+)
+
+#pagebreak()
+
+// ============================================================
+// SLIDE 3 — Proiezioni al 2030: packaging 3D
 // ============================================================
 
 #align(center)[

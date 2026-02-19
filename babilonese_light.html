@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dx — Algoritmo Babilonese</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    background: #f5f5f5; color: #24292e;
+    min-height: 100vh;
+}
+
+main {
+    display: grid; grid-template-columns: 420px 1fr;
+    height: 100vh;
+}
+@media (max-width: 900px) {
+    main { grid-template-columns: 1fr; }
+    .code-panel { max-height: 40vh; }
+}
+
+/* ── Code panel ── */
+.code-panel {
+    border-right: 1px solid #d0d7de; overflow: auto; padding: 0;
+    background: #ffffff; display: flex; flex-direction: column;
+}
+.panel-header {
+    font-size: 12px; color: #656d76; text-transform: uppercase;
+    letter-spacing: 1px; padding: 10px 16px;
+    border-bottom: 1px solid #d0d7de; background: #f6f8fa;
+    display: flex; align-items: center; gap: 10px;
+}
+.panel-header .title { flex: 1; }
+.editor-wrap {
+    position: relative; width: 100%; flex: 1; overflow: hidden;
+}
+.editor-wrap pre, .editor-wrap textarea {
+    font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Menlo', 'Consolas', monospace;
+    font-size: 13px; line-height: 1.5; padding: 12px 16px;
+    tab-size: 4; margin: 0; border: none; outline: none;
+    white-space: pre; overflow: auto;
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+}
+.editor-highlight {
+    background: #ffffff; color: #24292e; pointer-events: none; z-index: 0;
+}
+.editor-textarea {
+    background: transparent; color: transparent; caret-color: #24292e;
+    z-index: 1; resize: none; -webkit-text-fill-color: transparent;
+}
+.kw { color: #cf222e; }
+.ty { color: #0550ae; }
+.fn { color: #8250df; }
+.num { color: #0550ae; }
+.str { color: #0a3069; }
+.cm { color: #6e7781; font-style: italic; }
+.pr { color: #953800; font-weight: 600; }
+.op { color: #cf222e; }
+
+/* ── Right panel ── */
+.right-panel {
+    display: flex; flex-direction: column;
+    background: #ffffff; overflow: hidden;
+}
+
+button {
+    background: #2da44e; color: #fff; border: none; border-radius: 6px;
+    padding: 7px 20px; font-size: 13px; font-weight: 600; cursor: pointer;
+    font-family: inherit; transition: background 0.15s;
+}
+button:hover { background: #218838; }
+
+.console-out {
+    flex: 1;
+    font-family: 'SF Mono', 'JetBrains Mono', monospace;
+    font-size: 13px; line-height: 1.6; color: #24292e;
+    overflow-y: auto; white-space: pre;
+    padding: 12px 16px; background: #ffffff;
+}
+</style>
+</head>
+<body>
+
+<main>
+    <section class="code-panel">
+        <div class="panel-header">
+            <span class="title">babilonese.dx</span>
+            <button id="btn-run">Run</button>
+        </div>
+        <div class="editor-wrap">
+            <pre class="editor-highlight" id="editor-highlight"></pre>
+            <textarea class="editor-textarea" id="source-editor" spellcheck="false"></textarea>
+        </div>
+    </section>
+
+    <section class="right-panel">
+        <div class="console-out" id="console-out"></div>
+    </section>
+</main>
+
+<script>
+const DX_SOURCE = `-- Algoritmo Babilonese per la radice quadrata
+-- x_{n+1} = (x_n + S / x_n) / 2
+
+S : 4.0
+x : S
+
+for i in 0..30
+    x : (x + S / x) / 2.0
+    print("step {i}: x = {x}")
+
+print("sqrt({S}) = {x}")`;
+
+// ── Syntax highlighting ──
+function highlightDx(code) {
+    let h = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return h.split('\n').map(line => {
+        const cmIdx = line.indexOf('--');
+        let cp = cmIdx >= 0 ? line.slice(0, cmIdx) : line;
+        let cm = cmIdx >= 0 ? '<span class="cm">' + line.slice(cmIdx) + '</span>' : '';
+        cp = cp.replace(/("(?:[^"\\]|\\.)*?")/g, '<span class="str">$1</span>');
+        cp = cp.replace(/\b(type|fun|for|if|in|print|arena|let|return)\b/g, '<span class="kw">$1</span>');
+        cp = cp.replace(/\b(Net|Vec|Tensor|Float|Int|String)\b/g, '<span class="ty">$1</span>');
+        cp = cp.replace(/\b(it|me)\b/g, '<span class="pr">$1</span>');
+        cp = cp.replace(/\b(nn|mse|sigmoid|relu|softmax|gelu|sqrt)\b/g, '<span class="fn">$1</span>');
+        cp = cp.replace(/\bd\s+(\w+)\s*\/\s*d\s+(\w+)/g, '<span class="op">d</span> $1 / <span class="op">d</span> $2');
+        cp = cp.replace(/ \. /g, ' \u00b7 ');
+        cp = cp.replace(/\b(\d+\.?\d*)\b/g, '<span class="num">$1</span>');
+        return cp + cm;
+    }).join('\n');
+}
+
+const ta = document.getElementById('source-editor');
+const pre = document.getElementById('editor-highlight');
+const consoleOut = document.getElementById('console-out');
+
+function syncHighlight() { pre.innerHTML = highlightDx(ta.value) + '\n'; }
+function syncScroll() { pre.scrollTop = ta.scrollTop; pre.scrollLeft = ta.scrollLeft; }
+ta.addEventListener('input', syncHighlight);
+ta.addEventListener('scroll', syncScroll);
+
+// ── Interpreter ──
+function run() {
+    const lines = ta.value.split('\n');
+    const vars = {};
+    const log = [];
+    let loopBody = [], loopVar = null, loopStart = 0, loopEnd = 0, inLoop = false;
+
+    function evalExpr(expr, env) {
+        let e = expr.trim();
+        const names = Object.keys(env).sort((a, b) => b.length - a.length);
+        for (const n of names) {
+            e = e.replace(new RegExp('\\b' + n + '\\b', 'g'), `(${env[n]})`);
+        }
+        try { return Function('"use strict"; return (' + e + ')')(); }
+        catch { return NaN; }
+    }
+
+    function execLine(line, env) {
+        const l = line.trim();
+        if (!l || l.startsWith('--')) return;
+        const pm = l.match(/^print\("(.*)"\)$/);
+        if (pm) {
+            let msg = pm[1];
+            msg = msg.replace(/\{([^}]+)\}/g, (_, expr) => {
+                const v = evalExpr(expr, env);
+                return isNaN(v) ? '?' : v;
+            });
+            log.push(msg);
+            return;
+        }
+        const am = l.match(/^(\w+)\s*:\s*(.+)$/);
+        if (am) { env[am[1]] = evalExpr(am[2], env); }
+    }
+
+    for (let i = 0; i < lines.length; i++) {
+        const l = lines[i].trim();
+        if (!l || l.startsWith('--')) { if (inLoop) loopBody.push(lines[i]); continue; }
+        const fm = l.match(/^for\s+(\w+)\s+in\s+(\d+)\.\.(\d+)$/);
+        if (fm) {
+            loopVar = fm[1]; loopStart = parseInt(fm[2]); loopEnd = parseInt(fm[3]);
+            inLoop = true; loopBody = []; continue;
+        }
+        if (inLoop) {
+            if (lines[i].match(/^\s{2,}/) || lines[i].startsWith('\t')) {
+                loopBody.push(lines[i]);
+            } else {
+                inLoop = false;
+                for (let j = loopStart; j < loopEnd; j++) {
+                    vars[loopVar] = j;
+                    for (const bl of loopBody) execLine(bl, vars);
+                }
+                execLine(l, vars);
+            }
+        } else {
+            execLine(l, vars);
+        }
+    }
+    if (inLoop) {
+        for (let j = loopStart; j < loopEnd; j++) {
+            vars[loopVar] = j;
+            for (const bl of loopBody) execLine(bl, vars);
+        }
+    }
+
+    consoleOut.textContent = log.join('\n');
+    consoleOut.scrollTop = consoleOut.scrollHeight;
+}
+
+// ── Init ──
+ta.value = DX_SOURCE;
+syncHighlight();
+document.getElementById('btn-run').addEventListener('click', run);
+</script>
+</body>
+</html>

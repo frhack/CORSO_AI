@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neural Network Graph</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    background: #0a0a0a;
+    color: #e0e0e0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+}
+.top-bar {
+    width: 100%;
+    max-width: 1100px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+}
+.top-left h1 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    color: #5e9cff;
+    margin-bottom: 4px;
+}
+.top-left .subtitle {
+    font-size: 0.75rem;
+    color: #666;
+}
+.controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+.controls label {
+    font-size: 0.75rem;
+    color: #666;
+}
+.controls input[type="text"] {
+    padding: 7px 12px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    background: #111;
+    border: 1px solid #333;
+    border-radius: 6px;
+    color: #e0e0e0;
+    width: 200px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+.controls input[type="text"]:focus {
+    border-color: #5e9cff;
+}
+.controls button {
+    padding: 7px 18px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    font-family: inherit;
+    border: 1px solid #333;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s, transform 0.1s;
+    color: #e0e0e0;
+    background: #1a1a1a;
+}
+.controls button:hover { background: #222; border-color: #444; }
+.controls button:active { transform: scale(0.96); }
+
+.presets {
+    width: 100%;
+    max-width: 1100px;
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+.presets span {
+    font-size: 0.72rem;
+    color: #555;
+    margin-right: 2px;
+}
+.presets button {
+    padding: 4px 12px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    font-family: inherit;
+    border: 1px solid #252525;
+    border-radius: 5px;
+    background: #111;
+    color: #888;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.presets button:hover {
+    border-color: #5e9cff;
+    color: #5e9cff;
+    background: #151520;
+}
+
+.canvas-wrap {
+    width: 100%;
+    max-width: 1100px;
+    background: #111;
+    border: 1px solid #1a1a1a;
+    border-radius: 10px;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+canvas {
+    width: 100%;
+    cursor: default;
+}
+.legend {
+    display: flex;
+    gap: 18px;
+    margin-top: 14px;
+    font-size: 0.72rem;
+    color: #666;
+}
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+.legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 1.5px solid #333;
+}
+.info-bar {
+    width: 100%;
+    max-width: 1100px;
+    margin-top: 12px;
+    padding: 10px 16px;
+    background: #111;
+    border: 1px solid #1a1a1a;
+    border-radius: 8px;
+    font-size: 0.75rem;
+    color: #888;
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+}
+.info-bar .info-item {
+    display: flex;
+    gap: 6px;
+}
+.info-bar .info-label { color: #555; }
+.info-bar .info-val { font-weight: 600; color: #e0e0e0; }
+
+.code-block {
+    width: 100%;
+    max-width: 1100px;
+    margin-top: 12px;
+    background: #0d1117;
+    border: 1px solid #1a1a1a;
+    border-radius: 8px;
+    padding: 16px 20px;
+    overflow-x: auto;
+}
+.code-block pre {
+    margin: 0;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.82rem;
+    line-height: 1.6;
+    color: #c9d1d9;
+}
+.code-block .kw { color: #ff7b72; }
+.code-block .ty { color: #79c0ff; }
+.code-block .cm { color: #8b949e; font-style: italic; }
+.code-block .fn { color: #d2a8ff; }
+.code-block .num { color: #79c0ff; }
+
+.tooltip {
+    position: fixed;
+    padding: 8px 14px;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    color: #e0e0e0;
+    font-size: 0.75rem;
+    font-family: inherit;
+    border-radius: 6px;
+    pointer-events: none;
+    display: none;
+    z-index: 100;
+    line-height: 1.5;
+    max-width: 260px;
+}
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+    <div class="top-left">
+        <h1>Neural Network Graph</h1>
+        <p class="subtitle">Visualizzatore interattivo di architetture di reti neurali</p>
+    </div>
+    <div class="controls">
+        <label>Architettura:</label>
+        <input type="text" id="archInput" value="2, 8, 1" placeholder="es. 2, 8, 1">
+        <button id="btnDraw">Disegna</button>
+    </div>
+</div>
+
+<div class="presets">
+    <span>Preset:</span>
+    <button data-arch="2, 1">Percettrone [2,1]</button>
+    <button data-arch="2, 1, 1">AND/OR [2,1,1]</button>
+    <button data-arch="2, 8, 1">XOR [2,8,1]</button>
+    <button data-arch="784, 128, 10">MNIST [784,128,10]</button>
+    <button data-arch="784, 128, 64, 10">MNIST deep [784,128,64,10]</button>
+    <button data-arch="3, 8, 8, 4, 2">Deep [3,8,8,4,2]</button>
+    <button data-arch="2, 6, 6, 6, 1">4 Layer [2,6,6,6,1]</button>
+</div>
+
+<div class="canvas-wrap">
+    <canvas id="canvas"></canvas>
+    <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#5e9cff"></div> Input</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div> Hidden</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#ff7b72"></div> Output</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#444"></div> ... (troncato)</div>
+    </div>
+</div>
+
+<div class="info-bar" id="infoBar"></div>
+<div class="code-block" id="codeBlock"><pre id="codeContent"></pre></div>
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+const MAX_NEURONS = 12;
+const COLORS = {
+    input: '#5e9cff',
+    hidden: '#3fb950',
+    output: '#ff7b72',
+    dots: '#444',
+    edge: 'rgba(255,255,255,0.06)',
+    edgeHover: 'rgba(94,156,255,0.5)'
+};
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const tooltip = document.getElementById('tooltip');
+const archInput = document.getElementById('archInput');
+const infoBar = document.getElementById('infoBar');
+const codeContent = document.getElementById('codeContent');
+
+let layers = [];
+let nodes = [];
+let edges = [];
+let hoveredNode = null;
+let dpr = 1;
+let cw = 0, ch = 0;
+
+function parseLayers(str) {
+    return str.split(/[,\s]+/).map(s => parseInt(s.trim())).filter(n => n > 0 && !isNaN(n));
+}
+
+function buildGraph(layerSizes) {
+    layers = layerSizes;
+    nodes = [];
+    edges = [];
+
+    const padX = 80, padY = 50;
+    const maxVisual = Math.min(Math.max(...layerSizes), MAX_NEURONS);
+    const vSpacing = Math.max(24, Math.min(56, (ch - 2 * padY) / (maxVisual + 1)));
+    const hSpacing = (cw - 2 * padX) / Math.max(layerSizes.length - 1, 1);
+    const R = Math.max(14, Math.min(22, vSpacing * 0.38));
+
+    const layerNodes = [];
+
+    for (let li = 0; li < layerSizes.length; li++) {
+        const size = layerSizes[li];
+        const x = padX + hSpacing * li;
+        let type;
+        if (li === 0) type = 'input';
+        else if (li === layerSizes.length - 1) type = 'output';
+        else type = 'hidden';
+
+        const visual = [];
+        if (size <= MAX_NEURONS) {
+            for (let i = 0; i < size; i++) {
+                const y = ch / 2 + (i - (size - 1) / 2) * vSpacing;
+                const node = { x, y, r: R, label: `${i + 1}`, type, layerIdx: li, neuronIdx: i + 1, actualSize: size, isDots: false };
+                nodes.push(node);
+                visual.push(node);
+            }
+        } else {
+            const showCount = MAX_NEURONS;
+            const topCount = showCount - 2;
+            for (let i = 0; i < topCount; i++) {
+                const y = ch / 2 + (i - (showCount - 1) / 2) * vSpacing;
+                const node = { x, y, r: R, label: `${i + 1}`, type, layerIdx: li, neuronIdx: i + 1, actualSize: size, isDots: false };
+                nodes.push(node);
+                visual.push(node);
+            }
+            const dotsY = ch / 2 + (topCount - (showCount - 1) / 2) * vSpacing;
+            nodes.push({ x, y: dotsY, r: R * 0.65, label: '...', type: 'dots', layerIdx: li, neuronIdx: -1, actualSize: size, isDots: true });
+            const lastY = ch / 2 + (showCount - 1 - (showCount - 1) / 2) * vSpacing;
+            const lastNode = { x, y: lastY, r: R, label: `${size}`, type, layerIdx: li, neuronIdx: size, actualSize: size, isDots: false };
+            nodes.push(lastNode);
+            visual.push(lastNode);
+        }
+        layerNodes.push(visual);
+    }
+
+    for (let li = 0; li < layerNodes.length - 1; li++) {
+        for (const from of layerNodes[li]) {
+            for (const to of layerNodes[li + 1]) {
+                edges.push({ x1: from.x, y1: from.y, x2: to.x, y2: to.y, fromNode: from, toNode: to });
+            }
+        }
+    }
+    updateInfo();
+}
+
+function layerName(idx, total) {
+    if (idx === 0) return 'input';
+    if (idx === total - 1) return 'output';
+    return `hidden${total > 3 ? idx : ''}`;
+}
+
+function generateCode() {
+    if (layers.length < 2) { codeContent.innerHTML = ''; return; }
+
+    const lines = [];
+    lines.push(`<span class="kw">type</span> <span class="ty">Net</span>`);
+
+    for (let i = 1; i < layers.length; i++) {
+        const prevSize = layers[i - 1];
+        const curSize = layers[i];
+        const prevName = layerName(i - 1, layers.length);
+        const curName = layerName(i, layers.length);
+        const wName = `w${i}`;
+        const bName = `b${i}`;
+
+        const pad = '    ';
+        const wType = curSize === 1 && prevSize === 1
+            ? `<span class="ty">Vec</span>[<span class="num">1</span>]`
+            : curSize === 1
+            ? `<span class="ty">Vec</span>[<span class="num">${prevSize}</span>]`
+            : prevSize === 1
+            ? `<span class="ty">Vec</span>[<span class="num">${curSize}</span>]`
+            : `<span class="ty">Tensor</span>[<span class="num">${curSize}</span> <span class="num">${prevSize}</span>]`;
+        const bType = `<span class="ty">Vec</span>[<span class="num">${curSize}</span>]`;
+
+        const wComment = `<span class="cm">-- ${curSize} ${curName} × ${prevSize} ${prevName}</span>`;
+        const bComment = `<span class="cm">-- ${curSize === 1 ? '1 bias' : curSize + ' bias'} per ${curName}</span>`;
+
+        lines.push(`${pad}${wName} : ${wType}    ${wComment}`);
+        lines.push(`${pad}${bName} : ${bType}          ${bComment}`);
+    }
+
+    codeContent.innerHTML = lines.join('\n');
+}
+
+function updateInfo() {
+    const totalNeurons = layers.reduce((a, b) => a + b, 0);
+    let totalWeights = 0, totalBiases = 0;
+    for (let i = 1; i < layers.length; i++) {
+        totalWeights += layers[i - 1] * layers[i];
+        totalBiases += layers[i];
+    }
+    const totalParams = totalWeights + totalBiases;
+    infoBar.innerHTML = `
+        <div class="info-item"><span class="info-label">Architettura:</span><span class="info-val">${layers.join(' → ')}</span></div>
+        <div class="info-item"><span class="info-label">Neuroni:</span><span class="info-val">${totalNeurons.toLocaleString()}</span></div>
+        <div class="info-item"><span class="info-label">Pesi:</span><span class="info-val">${totalWeights.toLocaleString()}</span></div>
+        <div class="info-item"><span class="info-label">Bias:</span><span class="info-val">${totalBiases.toLocaleString()}</span></div>
+        <div class="info-item"><span class="info-label">Parametri:</span><span class="info-val">${totalParams.toLocaleString()}</span></div>
+    `;
+    generateCode();
+}
+
+function draw() {
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, cw, ch);
+
+    const layerLabels = layers.map((s, i) => {
+        if (i === 0) return 'Input';
+        if (i === layers.length - 1) return 'Output';
+        return `Hidden ${i}`;
+    });
+
+    // Layer background columns
+    if (nodes.length > 0) {
+        const byLayer = {};
+        for (const n of nodes) {
+            if (!byLayer[n.layerIdx]) byLayer[n.layerIdx] = [];
+            byLayer[n.layerIdx].push(n);
+        }
+        for (const li in byLayer) {
+            const ln = byLayer[li];
+            const x = ln[0].x;
+            const minY = Math.min(...ln.map(n => n.y)) - 36;
+            const maxY = Math.max(...ln.map(n => n.y)) + 36;
+            ctx.fillStyle = 'rgba(255,255,255,0.015)';
+            ctx.beginPath();
+            ctx.roundRect(x - 30, minY, 60, maxY - minY, 8);
+            ctx.fill();
+
+            ctx.fillStyle = '#555';
+            ctx.font = "600 10px 'SF Mono', 'Fira Code', 'Consolas', monospace";
+            ctx.textAlign = 'center';
+            ctx.fillText(layerLabels[li], x, minY - 8);
+            ctx.fillStyle = '#3a3a3a';
+            ctx.font = "9px 'SF Mono', 'Fira Code', 'Consolas', monospace";
+            ctx.fillText(`(${layers[li]})`, x, minY + 4);
+        }
+    }
+
+    // Edges
+    for (const e of edges) {
+        const isHovered = hoveredNode && (e.fromNode === hoveredNode || e.toNode === hoveredNode);
+        ctx.strokeStyle = isHovered ? COLORS.edgeHover : COLORS.edge;
+        ctx.lineWidth = isHovered ? 1.5 : 0.8;
+        ctx.beginPath();
+        ctx.moveTo(e.x1, e.y1);
+        ctx.lineTo(e.x2, e.y2);
+        ctx.stroke();
+    }
+
+    // Nodes
+    for (const n of nodes) {
+        const isHovered = n === hoveredNode;
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, n.r + (isHovered ? 3 : 0), 0, Math.PI * 2);
+
+        if (n.isDots) {
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fill();
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        } else {
+            ctx.fillStyle = COLORS[n.type] || COLORS.hidden;
+            ctx.fill();
+            if (isHovered) {
+                ctx.strokeStyle = '#e0e0e0';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+        }
+
+        ctx.fillStyle = n.isDots ? '#666' : '#0a0a0a';
+        const fs = n.isDots ? 10 : Math.max(9, Math.min(13, n.r * 0.7));
+        ctx.font = `700 ${fs}px 'SF Mono', 'Fira Code', 'Consolas', monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(n.label, n.x, n.y + 0.5);
+    }
+
+    ctx.restore();
+}
+
+function resize() {
+    dpr = window.devicePixelRatio || 1;
+    const wrap = canvas.parentElement;
+    const w = wrap.clientWidth - 36;
+    const h = Math.max(350, Math.min(600, layers.length > 0 ? Math.min(Math.max(...layers), MAX_NEURONS) * 60 + 120 : 450));
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    cw = w;
+    ch = h;
+}
+
+function fullRedraw() {
+    resize();
+    buildGraph(layers);
+    draw();
+}
+
+function setArch(str) {
+    archInput.value = str;
+    const parsed = parseLayers(str);
+    if (parsed.length < 2) return;
+    layers = parsed;
+    fullRedraw();
+}
+
+// Hover interaction
+canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    let found = null;
+    for (const n of nodes) {
+        const dx = mx - n.x, dy = my - n.y;
+        if (dx * dx + dy * dy <= (n.r + 6) * (n.r + 6)) { found = n; break; }
+    }
+
+    if (found !== hoveredNode) {
+        hoveredNode = found;
+        canvas.style.cursor = found ? 'pointer' : 'default';
+        draw();
+    }
+
+    if (found && !found.isDots) {
+        const typeNames = { input: 'Input', hidden: 'Hidden', output: 'Output' };
+        let html = `<b>${typeNames[found.type]} — Neurone ${found.neuronIdx}</b><br>`;
+        html += `Layer ${found.layerIdx} (${found.actualSize} neuroni)`;
+        if (found.layerIdx > 0) html += `<br>Pesi in ingresso: ${layers[found.layerIdx - 1]}`;
+        if (found.layerIdx < layers.length - 1) html += `<br>Connessioni in uscita: ${layers[found.layerIdx + 1]}`;
+        tooltip.innerHTML = html;
+        tooltip.style.display = 'block';
+        tooltip.style.left = (e.clientX + 14) + 'px';
+        tooltip.style.top = (e.clientY - 10) + 'px';
+    } else {
+        tooltip.style.display = 'none';
+    }
+});
+
+canvas.addEventListener('mouseleave', () => {
+    hoveredNode = null;
+    tooltip.style.display = 'none';
+    canvas.style.cursor = 'default';
+    draw();
+});
+
+document.getElementById('btnDraw').addEventListener('click', () => setArch(archInput.value));
+archInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') setArch(archInput.value); });
+document.querySelectorAll('.presets button').forEach(btn => {
+    btn.addEventListener('click', () => setArch(btn.dataset.arch));
+});
+window.addEventListener('resize', fullRedraw);
+setArch('2, 8, 1');
+</script>
+</body>
+</html>

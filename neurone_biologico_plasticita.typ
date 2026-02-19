@@ -1,21 +1,21 @@
-#set page(width: auto, height: auto, margin: 1cm)
-#set text(font: "New Computer Modern", size: 11pt, lang: "it")
+#set page(width: 25.4cm, height: 14.29cm, margin: (x: 1cm, y: 0.8cm))
+#set text(font: "New Computer Modern", size: 10.5pt, lang: "it")
 
 #align(center)[
-  #text(size: 20pt, weight: "bold")[Plasticità Sinaptica]
+  #text(size: 18pt, weight: "bold")[Plasticità Sinaptica]
 ]
 
-#v(0.5cm)
+#v(0.3cm)
 
 #grid(
-  columns: (auto, 9cm),
-  gutter: 1cm,
+  columns: (1fr, 10cm),
+  gutter: 0.8cm,
   [
-    #image("Blausen_0657_MultipolarNeuron.png", width: 12cm)
+    #image("Blausen_0657_MultipolarNeuron.png", width: 100%)
   ],
   [
-    #v(0.5cm)
-    #box(stroke: 1pt + gray, radius: 5pt, fill: luma(250), inset: 12pt)[
+    #v(0.3cm)
+    #box(stroke: 1pt + gray, radius: 5pt, fill: luma(250), inset: 10pt)[
       #text(size: 10pt)[
         *Integrazione del segnale*
 
@@ -23,9 +23,9 @@
       ]
     ]
 
-    #v(0.5cm)
+    #v(0.3cm)
 
-    #box(stroke: 1pt + gray, radius: 5pt, fill: luma(250), inset: 12pt)[
+    #box(stroke: 1pt + gray, radius: 5pt, fill: luma(250), inset: 10pt)[
       #text(size: 10pt)[
         *Plasticità delle connessioni*
 
@@ -35,7 +35,7 @@
   ]
 )
 
-#v(0.5cm)
+#v(0.3cm)
 
 #align(center)[
   #text(size: 12pt)[
