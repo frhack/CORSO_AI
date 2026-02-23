@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dx — Stack e Queue</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    background: #0a0a0a; color: #e0e0e0;
+    min-height: 100vh;
+}
+
+main {
+    display: grid; grid-template-columns: 420px 1fr;
+    height: 100vh;
+}
+@media (max-width: 900px) {
+    main { grid-template-columns: 1fr; }
+    .code-panel { max-height: 40vh; }
+}
+
+/* ── Code panel ── */
+.code-panel {
+    border-right: 1px solid #21262d; overflow: auto; padding: 0;
+    background: #0d1117; display: flex; flex-direction: column;
+}
+.panel-header {
+    font-size: 12px; color: #8b949e; text-transform: uppercase;
+    letter-spacing: 1px; padding: 10px 16px;
+    border-bottom: 1px solid #21262d; background: #161b22;
+    display: flex; align-items: center; gap: 10px;
+}
+.panel-header .title { flex: 1; }
+.editor-wrap {
+    position: relative; width: 100%; flex: 1; overflow: hidden;
+}
+.editor-wrap pre, .editor-wrap textarea {
+    font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Menlo', 'Consolas', monospace;
+    font-size: 13px; line-height: 1.5; padding: 12px 16px;
+    tab-size: 4; margin: 0; border: none; outline: none;
+    white-space: pre; overflow: auto;
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+}
+.editor-highlight {
+    background: #0d1117; color: #c9d1d9; pointer-events: none; z-index: 0;
+}
+.editor-textarea {
+    background: transparent; color: transparent; caret-color: #c9d1d9;
+    z-index: 1; resize: none; -webkit-text-fill-color: transparent;
+}
+.kw { color: #ff7b72; }
+.ty { color: #79c0ff; }
+.fn { color: #d2a8ff; }
+.num { color: #79c0ff; }
+.str { color: #a5d6ff; }
+.cm { color: #8b949e; font-style: italic; }
+.pr { color: #ffa657; font-weight: 600; }
+.op { color: #ff7b72; }
+
+/* ── Right panel ── */
+.right-panel {
+    display: flex; flex-direction: column;
+    background: #0d1117; overflow: hidden;
+}
+.right-header {
+    font-size: 12px; color: #8b949e; text-transform: uppercase;
+    letter-spacing: 1px; padding: 10px 16px;
+    border-bottom: 1px solid #21262d; background: #161b22;
+}
+
+button {
+    background: #238636; color: #fff; border: none; border-radius: 6px;
+    padding: 7px 20px; font-size: 13px; font-weight: 600; cursor: pointer;
+    font-family: inherit; transition: background 0.15s;
+}
+button:hover { background: #2ea043; }
+
+.console-out {
+    flex: 1;
+    font-family: 'SF Mono', 'JetBrains Mono', monospace;
+    font-size: 13px; line-height: 1.6; color: #c9d1d9;
+    overflow-y: auto; white-space: pre;
+    padding: 12px 16px; background: #0d1117;
+}
+.console-out .err { color: #f85149; }
+.console-out .meta { color: #8b949e; font-style: italic; }
+</style>
+</head>
+<body>
+
+<main>
+    <section class="code-panel">
+        <div class="panel-header">
+            <span class="title">stack_queue.dx</span>
+            <button id="btn-run">Run</button>
+        </div>
+        <div class="editor-wrap">
+            <pre class="editor-highlight" id="editor-highlight"></pre>
+            <textarea class="editor-textarea" id="source-editor" spellcheck="false"></textarea>
+        </div>
+    </section>
+
+    <section class="right-panel">
+        <div class="right-header">output</div>
+        <div class="console-out" id="console-out"></div>
+    </section>
+</main>
+
+<script src="dx_compiler.js"></script>
+<script>
+const DX_SOURCE = `-- Stack e Queue in dx
+-- Prova a modificare i nomi o l'ordine!
+
+-- === Stack (LIFO) ===
+-- Come una pila di piatti:
+-- l'ultimo aggiunto e' il primo tolto
+
+pila : Stack[]
+pila'put("Alice")
+pila'put("Bob")
+pila'put("Carol")
+pila'put("Diana")
+
+print("=== Stack (LIFO) ===")
+print("  pop: " + pila'get())
+print("  pop: " + pila'get())
+print("  pop: " + pila'get())
+print("  pop: " + pila'get())
+
+print("")
+
+-- === Queue (FIFO) ===
+-- Come la fila alla cassa:
+-- il primo arrivato e' il primo servito
+
+fila : Queue[]
+fila'put("Alice")
+fila'put("Bob")
+fila'put("Carol")
+fila'put("Diana")
+
+print("=== Queue (FIFO) ===")
+print("  next: " + fila'get())
+print("  next: " + fila'get())
+print("  next: " + fila'get())
+print("  next: " + fila'get())`;
+
+// ── Syntax highlighting ──
+function highlightDx(code) {
+    let h = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return h.split('\n').map(line => {
+        const cmIdx = line.indexOf('--');
+        let cp = cmIdx >= 0 ? line.slice(0, cmIdx) : line;
+        let cm = cmIdx >= 0 ? '<span class="cm">' + line.slice(cmIdx) + '</span>' : '';
+        cp = cp.replace(/("(?:[^"\\]|\\.)*?")/g, '<span class="str">$1</span>');
+        cp = cp.replace(/\b(type|fun|for|if|in|print|return|while|not|and|or|true|false)\b/g, '<span class="kw">$1</span>');
+        cp = cp.replace(/\b(Stack|Queue|Vec|Int|Float|String)\b/g, '<span class="ty">$1</span>');
+        cp = cp.replace(/\b(it|me)\b/g, '<span class="pr">$1</span>');
+        cp = cp.replace(/\b(\d+\.?\d*)\b/g, '<span class="num">$1</span>');
+        return cp + cm;
+    }).join('\n');
+}
+
+const ta = document.getElementById('source-editor');
+const pre = document.getElementById('editor-highlight');
+const consoleOut = document.getElementById('console-out');
+
+function syncHighlight() { pre.innerHTML = highlightDx(ta.value) + '\n'; }
+function syncScroll() { pre.scrollTop = ta.scrollTop; pre.scrollLeft = ta.scrollLeft; }
+ta.addEventListener('input', syncHighlight);
+ta.addEventListener('scroll', syncScroll);
+
+// ── Compile & Run ──
+function run() {
+    consoleOut.innerHTML = '';
+    const src = ta.value;
+
+    // Compile dx → JS
+    let jsCode;
+    try {
+        const t0 = performance.now();
+        jsCode = dx_compile_js(src);
+        const dt = (performance.now() - t0).toFixed(1);
+        appendMeta(`compiled in ${dt} ms`);
+    } catch (e) {
+        appendErr('Compile error: ' + e.message);
+        return;
+    }
+
+    // Execute JS, capturing console.log
+    const savedLog = console.log;
+    const output = [];
+    console.log = function(...args) {
+        output.push(args.map(a =>
+            a === true ? 'True' : a === false ? 'False' :
+            a === null || a === undefined ? 'None' :
+            Array.isArray(a) ? '[' + a.join(', ') + ']' : String(a)
+        ).join(' '));
+    };
+    try {
+        const t0 = performance.now();
+        new Function(jsCode)();
+        const dt = (performance.now() - t0).toFixed(1);
+        appendMeta(`executed in ${dt} ms`);
+    } catch (e) {
+        appendErr('Runtime error: ' + e.message);
+    } finally {
+        console.log = savedLog;
+    }
+    for (const line of output) appendOut(line);
+    consoleOut.scrollTop = consoleOut.scrollHeight;
+}
+
+function appendOut(text) {
+    consoleOut.appendChild(document.createTextNode(text + '\n'));
+}
+function appendErr(text) {
+    const span = document.createElement('span');
+    span.className = 'err';
+    span.textContent = text + '\n';
+    consoleOut.appendChild(span);
+}
+function appendMeta(text) {
+    const span = document.createElement('span');
+    span.className = 'meta';
+    span.textContent = text + '\n';
+    consoleOut.appendChild(span);
+}
+
+// ── Init ──
+ta.value = DX_SOURCE;
+syncHighlight();
+document.getElementById('btn-run').addEventListener('click', run);
+ta.addEventListener('keydown', e => {
+    if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); run(); }
+});
+</script>
+</body>
+</html>

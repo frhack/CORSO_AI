@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dx — Gradiente 3D</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    background: #0a0a0a; color: #e0e0e0;
+    min-height: 100vh;
+}
+
+main {
+    display: grid; grid-template-columns: 420px 1fr;
+    height: 100vh;
+}
+@media (max-width: 900px) {
+    main { grid-template-columns: 1fr; }
+    .code-panel { max-height: 40vh; }
+}
+
+/* ── Code panel ── */
+.code-panel {
+    border-right: 1px solid #21262d; overflow: auto; padding: 0;
+    background: #0d1117; display: flex; flex-direction: column;
+}
+.panel-header {
+    font-size: 12px; color: #8b949e; text-transform: uppercase;
+    letter-spacing: 1px; padding: 10px 16px;
+    border-bottom: 1px solid #21262d; background: #161b22;
+    display: flex; align-items: center; gap: 10px;
+}
+.panel-header .title { flex: 1; }
+.editor-wrap {
+    position: relative; width: 100%; flex: 1; overflow: hidden;
+}
+.editor-wrap pre, .editor-wrap textarea {
+    font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Menlo', 'Consolas', monospace;
+    font-size: 13px; line-height: 1.5; padding: 12px 16px;
+    tab-size: 4; margin: 0; border: none; outline: none;
+    white-space: pre; overflow: auto;
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+}
+.editor-highlight {
+    background: #0d1117; color: #c9d1d9; pointer-events: none; z-index: 0;
+}
+.editor-textarea {
+    background: transparent; color: transparent; caret-color: #c9d1d9;
+    z-index: 1; resize: none; -webkit-text-fill-color: transparent;
+}
+.kw { color: #ff7b72; }
+.ty { color: #79c0ff; }
+.fn { color: #d2a8ff; }
+.num { color: #79c0ff; }
+.str { color: #a5d6ff; }
+.cm { color: #8b949e; font-style: italic; }
+.pr { color: #ffa657; font-weight: 600; }
+.op { color: #ff7b72; }
+
+/* ── Right panel ── */
+.right-panel {
+    display: flex; flex-direction: column;
+    background: #0a0a0a; overflow: hidden;
+    position: relative;
+}
+
+canvas { flex: 1; display: block; cursor: crosshair; }
+
+button {
+    background: #238636; color: #fff; border: none; border-radius: 6px;
+    padding: 7px 20px; font-size: 13px; font-weight: 600; cursor: pointer;
+    font-family: inherit; transition: background 0.15s;
+}
+button:hover { background: #2ea043; }
+
+.bottom {
+    padding: 16px 0 22px;
+    background: #0a0a0a;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    z-index: 10;
+}
+
+.values {
+    display: flex;
+    gap: 50px;
+    font-size: 1.05rem;
+}
+.values .item { text-align: center; }
+.values .label {
+    color: #666;
+    font-size: 0.75rem;
+    margin-bottom: 4px;
+}
+.values .num {
+    font-size: 1.3rem;
+    font-weight: 600;
+}
+.values .num.xy-val { color: #e0e0e0; }
+.values .num.fxy-val { color: #5e9cff; }
+.values .num.grad-val { color: #f0c040; }
+
+.hint {
+    font-size: 0.65rem;
+    color: #444;
+}
+</style>
+</head>
+<body>
+
+<main>
+    <section class="code-panel">
+        <div class="panel-header">
+            <span class="title">grad.dx</span>
+            <button id="btn-run">Run</button>
+        </div>
+        <div class="editor-wrap">
+            <pre class="editor-highlight" id="editor-highlight"></pre>
+            <textarea class="editor-textarea" id="source-editor" spellcheck="false"></textarea>
+        </div>
+    </section>
+
+    <section class="right-panel">
+        <canvas id="cv"></canvas>
+
+        <div class="bottom">
+            <div class="values">
+                <div class="item">
+                    <div class="label">x, y</div>
+                    <div class="num xy-val" id="v-xy">1.00, 1.00</div>
+                </div>
+                <div class="item">
+                    <div class="label">f(x,y)</div>
+                    <div class="num fxy-val" id="v-fxy">2.00</div>
+                </div>
+                <div class="item">
+                    <div class="label">&nabla;f</div>
+                    <div class="num grad-val" id="v-grad">[2.00, 2.00]</div>
+                </div>
+            </div>
+            <div class="hint">trascina per spostare il punto &middot; shift+trascina per ruotare</div>
+        </div>
+    </section>
+</main>
+
+<script>
+const DX_SOURCE = `-- Gradiente 3D
+-- Trascina per spostare il punto
+-- Shift+trascina per ruotare
+
+f(x, y) : x * x + y * y
+
+-- il gradiente e' visualizzato
+-- come freccia gialla sul piano z=0`;
+
+// ── Syntax highlighting ──
+function highlightDx(code) {
+    let h = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return h.split('\n').map(line => {
+        const cmIdx = line.indexOf('--');
+        let cp = cmIdx >= 0 ? line.slice(0, cmIdx) : line;
+        let cm = cmIdx >= 0 ? '<span class="cm">' + line.slice(cmIdx) + '</span>' : '';
+        cp = cp.replace(/("(?:[^"\\]|\\.)*?")/g, '<span class="str">$1</span>');
+        cp = cp.replace(/\b(type|fun|for|if|in|print|arena|let|return)\b/g, '<span class="kw">$1</span>');
+        cp = cp.replace(/\b(Net|Vec|Tensor|Float|Int|String)\b/g, '<span class="ty">$1</span>');
+        cp = cp.replace(/\b(it|me)\b/g, '<span class="pr">$1</span>');
+        cp = cp.replace(/\b(nn|mse|sigmoid|relu|softmax|gelu|sqrt|sin|cos|exp|log|abs)\b/g, '<span class="fn">$1</span>');
+        cp = cp.replace(/\bd\b/g, '<span class="op">d</span>');
+        cp = cp.replace(/\b(\d+\.?\d*)\b/g, '<span class="num">$1</span>');
+        return cp + cm;
+    }).join('\n');
+}
+
+const ta = document.getElementById('source-editor');
+const pre = document.getElementById('editor-highlight');
+
+function syncHighlight() { pre.innerHTML = highlightDx(ta.value) + '\n'; }
+function syncScroll() { pre.scrollTop = ta.scrollTop; pre.scrollLeft = ta.scrollLeft; }
+ta.addEventListener('input', syncHighlight);
+ta.addEventListener('scroll', syncScroll);
+
+// ── Parse f(x, y) from dx source ──
+const MATH_FNS = { sin: 'Math.sin', cos: 'Math.cos', tan: 'Math.tan',
+    sqrt: 'Math.sqrt', abs: 'Math.abs', exp: 'Math.exp', log: 'Math.log',
+    pow: 'Math.pow', PI: 'Math.PI', pi: 'Math.PI' };
+
+function parseFunction2D(src) {
+    const m = src.match(/f\s*\(\s*(\w+)\s*,\s*(\w+)\s*\)\s*[:=]\s*(.+)/);
+    if (!m) return null;
+    const v1 = m[1], v2 = m[2];
+    let expr = m[3].trim();
+    expr = expr.replace(/\^/g, '**');
+    for (const [k, v] of Object.entries(MATH_FNS)) {
+        expr = expr.replace(new RegExp('\\b' + k + '\\b', 'g'), v);
+    }
+    try {
+        const fn = new Function(v1, v2, '"use strict"; return (' + expr + ')');
+        fn(1, 1); // test
+        return fn;
+    } catch { return null; }
+}
+
+let f = (x, y) => x * x + y * y;
+
+function reparse() {
+    const fn = parseFunction2D(ta.value);
+    if (fn) f = fn;
+}
+
+// ── Canvas ──
+const canvas = document.getElementById('cv');
+const ctx = canvas.getContext('2d');
+const bottomH = 90;
+
+let az = 2.3, el = 0.55;
+let px = 1.0, py = 1.0;
+let dragging = false, rotating = false;
+let lastMX = 0, lastMY = 0;
+const RANGE = 3.6;
+const GRID = 40;
+
+function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.parentElement.clientWidth;
+    const h = canvas.parentElement.clientHeight - bottomH;
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function draw() {
+    const W = canvas.width / (window.devicePixelRatio || 1);
+    const H = canvas.height / (window.devicePixelRatio || 1);
+    ctx.clearRect(0, 0, W, H);
+
+    const cosA = Math.cos(az), sinA = Math.sin(az);
+    const cosE = Math.cos(el), sinE = Math.sin(el);
+    const scale = Math.min(W, H) * 0.11;
+    const cx = W / 2, cy = H * 0.65;
+
+    function proj(x, y, z) {
+        const rx = x * cosA - y * sinA;
+        const ry = x * sinA + y * cosA;
+        const ry2 = ry * cosE + z * sinE;
+        const rz = -ry * sinE + z * cosE;
+        return [cx + rx * scale, cy - ry2 * scale, rz];
+    }
+
+    const quads = [];
+    const step = (2 * RANGE) / GRID;
+
+    // Surface quads
+    for (let j = 0; j < GRID; j++) {
+        for (let i = 0; i < GRID; i++) {
+            const x0 = -RANGE + i * step, x1 = x0 + step;
+            const y0 = -RANGE + j * step, y1 = y0 + step;
+            const z00 = f(x0, y0), z10 = f(x1, y0);
+            const z01 = f(x0, y1), z11 = f(x1, y1);
+            const c = [proj(x0, y0, z00), proj(x1, y0, z10),
+                       proj(x1, y1, z11), proj(x0, y1, z01)];
+            const avgZ = (c[0][2] + c[1][2] + c[2][2] + c[3][2]) / 4;
+            const avgH = (z00 + z10 + z01 + z11) / 4;
+            quads.push({ c, avgZ, avgH, type: 's' });
+        }
+    }
+
+    // Base grid
+    const BASE_GRID = 6;
+    const bstep = (2 * RANGE) / BASE_GRID;
+    for (let j = 0; j < BASE_GRID; j++) {
+        for (let i = 0; i < BASE_GRID; i++) {
+            const x0 = -RANGE + i * bstep, x1 = x0 + bstep;
+            const y0 = -RANGE + j * bstep, y1 = y0 + bstep;
+            const c = [proj(x0, y0, 0), proj(x1, y0, 0),
+                       proj(x1, y1, 0), proj(x0, y1, 0)];
+            const avgZ = (c[0][2] + c[1][2] + c[2][2] + c[3][2]) / 4;
+            quads.push({ c, avgZ, type: 'g' });
+        }
+    }
+
+    // Point and gradient
+    const fVal = f(px, py);
+    const pBase = proj(px, py, 0);
+    const pSurf = proj(px, py, fVal);
+    const pMidZ = (pBase[2] + pSurf[2]) / 2;
+
+    // Numerical gradient
+    const h = 1e-5;
+    const gx = (f(px + h, py) - f(px - h, py)) / (2 * h);
+    const gy = (f(px, py + h) - f(px, py - h)) / (2 * h);
+    const gradMag = Math.sqrt(gx * gx + gy * gy);
+    const arrowScale = Math.min(1.0, 3.0 / (gradMag + 0.01));
+    const ax = px + gx * arrowScale, ay = py + gy * arrowScale;
+    const pArrowEnd = proj(ax, ay, 0);
+    const arrowMidZ = (pBase[2] + pArrowEnd[2]) / 2;
+
+    quads.push({ type: 'line', avgZ: pMidZ });
+    quads.push({ type: 'arrow', avgZ: arrowMidZ });
+    quads.push({ type: 'pointBase', avgZ: pBase[2] + 0.01 });
+    quads.push({ type: 'pointSurf', avgZ: pSurf[2] + 0.01 });
+
+    quads.sort((a, b) => a.avgZ - b.avgZ);
+
+    const maxZ = RANGE * RANGE * 2;
+
+    for (const q of quads) {
+        if (q.type === 'g') {
+            ctx.beginPath();
+            ctx.moveTo(q.c[0][0], q.c[0][1]);
+            for (let k = 1; k < 4; k++) ctx.lineTo(q.c[k][0], q.c[k][1]);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.02)';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+        } else if (q.type === 's') {
+            const t = Math.min(q.avgH / maxZ, 1);
+            const r = Math.round(30 + t * 50);
+            const g = Math.round(120 + t * 40);
+            const b = Math.round(200 + t * 55);
+            const alpha = 0.55 + t * 0.35;
+            ctx.beginPath();
+            ctx.moveTo(q.c[0][0], q.c[0][1]);
+            for (let k = 1; k < 4; k++) ctx.lineTo(q.c[k][0], q.c[k][1]);
+            ctx.closePath();
+            ctx.fillStyle = `rgba(${r},${g},${b},${alpha.toFixed(2)})`;
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+            ctx.lineWidth = 0.3;
+            ctx.stroke();
+        } else if (q.type === 'line') {
+            ctx.setLineDash([4, 4]);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(pBase[0], pBase[1]);
+            ctx.lineTo(pSurf[0], pSurf[1]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        } else if (q.type === 'arrow') {
+            if (gradMag > 0.05) {
+                ctx.strokeStyle = '#f0c040';
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.moveTo(pBase[0], pBase[1]);
+                ctx.lineTo(pArrowEnd[0], pArrowEnd[1]);
+                ctx.stroke();
+
+                const dx = pArrowEnd[0] - pBase[0];
+                const dy = pArrowEnd[1] - pBase[1];
+                const len = Math.sqrt(dx * dx + dy * dy);
+                if (len > 1) {
+                    const ux = dx / len, uy = dy / len;
+                    const headLen = 10, headW = 5;
+                    ctx.fillStyle = '#f0c040';
+                    ctx.beginPath();
+                    ctx.moveTo(pArrowEnd[0], pArrowEnd[1]);
+                    ctx.lineTo(pArrowEnd[0] - ux * headLen + uy * headW,
+                               pArrowEnd[1] - uy * headLen - ux * headW);
+                    ctx.lineTo(pArrowEnd[0] - ux * headLen - uy * headW,
+                               pArrowEnd[1] - uy * headLen + ux * headW);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            }
+        } else if (q.type === 'pointBase') {
+            ctx.beginPath();
+            ctx.arc(pBase[0], pBase[1], 5, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff'; ctx.fill();
+            ctx.beginPath();
+            ctx.arc(pBase[0], pBase[1], 3, 0, Math.PI * 2);
+            ctx.fillStyle = '#5e9cff'; ctx.fill();
+        } else if (q.type === 'pointSurf') {
+            ctx.beginPath();
+            ctx.arc(pSurf[0], pSurf[1], 6, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff'; ctx.fill();
+            ctx.beginPath();
+            ctx.arc(pSurf[0], pSurf[1], 4, 0, Math.PI * 2);
+            ctx.fillStyle = '#5e9cff'; ctx.fill();
+        }
+    }
+
+    // Axes
+    const o = proj(-RANGE, -RANGE, 0);
+    const axEnd = proj(RANGE + 0.5, -RANGE, 0);
+    const ayEnd = proj(-RANGE, RANGE + 0.5, 0);
+    const azEnd = proj(-RANGE, -RANGE, maxZ * 0.7);
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(o[0], o[1]); ctx.lineTo(axEnd[0], axEnd[1]); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(o[0], o[1]); ctx.lineTo(ayEnd[0], ayEnd[1]); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(o[0], o[1]); ctx.lineTo(azEnd[0], azEnd[1]); ctx.stroke();
+    ctx.fillStyle = '#666';
+    ctx.font = '12px SF Mono, Consolas, monospace';
+    ctx.fillText('x', axEnd[0] + 6, axEnd[1] + 2);
+    ctx.fillText('y', ayEnd[0] + 6, ayEnd[1] + 2);
+    ctx.fillText('f', azEnd[0] + 6, azEnd[1] - 2);
+
+    // Update values
+    document.getElementById('v-xy').textContent = px.toFixed(2) + ', ' + py.toFixed(2);
+    document.getElementById('v-fxy').textContent = fVal.toFixed(2);
+    document.getElementById('v-grad').textContent = '[' + gx.toFixed(2) + ', ' + gy.toFixed(2) + ']';
+}
+
+// ── Inverse projection ──
+function screenToXY(sx, sy) {
+    const W = canvas.width / (window.devicePixelRatio || 1);
+    const H = canvas.height / (window.devicePixelRatio || 1);
+    const scale = Math.min(W, H) * 0.11;
+    const cx = W / 2, cy = H * 0.65;
+    const cosA = Math.cos(az), sinA = Math.sin(az);
+    const cosE = Math.cos(el);
+
+    const rx = (sx - cx) / scale;
+    const ry2 = -(sy - cy) / scale;
+    const ry = ry2 / cosE;
+    const x = rx * cosA + ry * sinA;
+    const y = -rx * sinA + ry * cosA;
+    return [x, y];
+}
+
+// ── Mouse interaction ──
+canvas.addEventListener('mousedown', (e) => {
+    lastMX = e.clientX; lastMY = e.clientY;
+    if (e.shiftKey || e.button === 2) {
+        rotating = true;
+        canvas.style.cursor = 'grabbing';
+    } else {
+        dragging = true;
+        const rect = canvas.getBoundingClientRect();
+        const [x, y] = screenToXY(e.clientX - rect.left, e.clientY - rect.top);
+        px = Math.max(-RANGE, Math.min(RANGE, x));
+        py = Math.max(-RANGE, Math.min(RANGE, y));
+        draw();
+    }
+});
+
+window.addEventListener('mousemove', (e) => {
+    if (rotating) {
+        az += (e.clientX - lastMX) * 0.008;
+        el = Math.max(0.15, Math.min(1.4, el - (e.clientY - lastMY) * 0.008));
+        lastMX = e.clientX; lastMY = e.clientY;
+        draw();
+    } else if (dragging) {
+        const rect = canvas.getBoundingClientRect();
+        const [x, y] = screenToXY(e.clientX - rect.left, e.clientY - rect.top);
+        px = Math.max(-RANGE, Math.min(RANGE, x));
+        py = Math.max(-RANGE, Math.min(RANGE, y));
+        draw();
+    }
+});
+
+window.addEventListener('mouseup', () => {
+    dragging = false; rotating = false;
+    canvas.style.cursor = 'crosshair';
+});
+
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// Touch support
+canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    const t = e.touches[0];
+    lastMX = t.clientX; lastMY = t.clientY;
+    if (e.touches.length === 2) { rotating = true; }
+    else {
+        dragging = true;
+        const rect = canvas.getBoundingClientRect();
+        const [x, y] = screenToXY(t.clientX - rect.left, t.clientY - rect.top);
+        px = Math.max(-RANGE, Math.min(RANGE, x));
+        py = Math.max(-RANGE, Math.min(RANGE, y));
+        draw();
+    }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    const t = e.touches[0];
+    if (rotating || e.touches.length === 2) {
+        az += (t.clientX - lastMX) * 0.008;
+        el = Math.max(0.15, Math.min(1.4, el - (t.clientY - lastMY) * 0.008));
+        rotating = true;
+    } else if (dragging) {
+        const rect = canvas.getBoundingClientRect();
+        const [x, y] = screenToXY(t.clientX - rect.left, t.clientY - rect.top);
+        px = Math.max(-RANGE, Math.min(RANGE, x));
+        py = Math.max(-RANGE, Math.min(RANGE, y));
+    }
+    lastMX = t.clientX; lastMY = t.clientY;
+    draw();
+}, { passive: false });
+
+canvas.addEventListener('touchend', () => { dragging = false; rotating = false; });
+
+// ── Run button ──
+document.getElementById('btn-run').addEventListener('click', () => {
+    reparse();
+    draw();
+});
+
+// Ctrl+Enter to run
+ta.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); reparse(); draw(); }
+    if (e.key === 'Tab') {
+        e.preventDefault();
+        const s = ta.selectionStart, end = ta.selectionEnd;
+        ta.value = ta.value.substring(0, s) + '    ' + ta.value.substring(end);
+        ta.selectionStart = ta.selectionEnd = s + 4;
+        syncHighlight();
+    }
+});
+
+// ── Init ──
+ta.value = DX_SOURCE;
+syncHighlight();
+
+function onResize() { resize(); draw(); }
+window.addEventListener('resize', onResize);
+onResize();
+</script>
+
+</body>
+</html>

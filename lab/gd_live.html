@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dx — Gradient Descent Interattivo</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0d1117; color: #c9d1d9;
+    min-height: 100vh;
+}
+button {
+    background: #238636; color: #fff; border: none; border-radius: 6px;
+    padding: 7px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
+    transition: background 0.15s;
+}
+button:hover { background: #2ea043; }
+button:disabled { background: #21262d; color: #8b949e; cursor: not-allowed; }
+button.secondary { background: #30363d; }
+button.secondary:hover { background: #3d444d; }
+input[type="number"] {
+    background: #0d1117; color: #c9d1d9; border: 1px solid #30363d;
+    border-radius: 6px; padding: 5px 8px; font-size: 13px; width: 80px;
+    font-family: 'SF Mono', 'JetBrains Mono', monospace;
+}
+main {
+    display: grid; grid-template-columns: 420px 1fr;
+    height: 100vh;
+}
+@media (max-width: 900px) {
+    main { grid-template-columns: 1fr; }
+    .code-panel { max-height: 40vh; }
+}
+.code-panel {
+    border-right: 1px solid #21262d; overflow: auto; padding: 0;
+    background: #0d1117; display: flex; flex-direction: column;
+}
+.panel-header {
+    font-size: 12px; color: #8b949e; text-transform: uppercase;
+    letter-spacing: 1px; padding: 12px 16px 8px;
+    border-bottom: 1px solid #21262d; background: #161b22;
+    display: flex; align-items: center; gap: 10px;
+}
+.panel-header .title { flex: 1; }
+.badge {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 10px; font-weight: 600; letter-spacing: 0.5px;
+}
+.badge-live { background: #1f6feb33; color: #58a6ff; }
+.editor-wrap {
+    position: relative; width: 100%; flex: 1;
+    overflow: hidden;
+}
+.editor-wrap pre, .editor-wrap textarea {
+    font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Menlo', 'Consolas', monospace;
+    font-size: 13px; line-height: 1.5; padding: 12px 16px;
+    tab-size: 4; margin: 0; border: none; outline: none;
+    white-space: pre; overflow: auto;
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+}
+.editor-highlight {
+    background: #0d1117; color: #c9d1d9; pointer-events: none; z-index: 0;
+}
+.editor-textarea {
+    background: transparent; color: transparent; caret-color: #c9d1d9;
+    z-index: 1; resize: none; -webkit-text-fill-color: transparent;
+}
+.kw  { color: #ff7b72; }
+.ty  { color: #79c0ff; }
+.fn  { color: #d2a8ff; }
+.num { color: #79c0ff; }
+.str { color: #a5d6ff; }
+.cm  { color: #8b949e; font-style: italic; }
+.pr  { color: #ffa657; font-weight: 600; }
+.op  { color: #ff7b72; }
+.viz-panel {
+    padding: 16px; display: flex; flex-direction: column; gap: 12px;
+    overflow: auto;
+}
+.controls {
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+}
+.control-group {
+    display: flex; align-items: center; gap: 4px;
+}
+.control-group label {
+    font-size: 11px; color: #8b949e; text-transform: uppercase;
+    letter-spacing: 0.5px; white-space: nowrap;
+}
+.stats-bar {
+    display: flex; gap: 24px; padding: 8px 0; flex-wrap: wrap;
+}
+.stat .label {
+    font-size: 11px; color: #8b949e; text-transform: uppercase;
+    letter-spacing: 1px;
+}
+.stat .value {
+    font-size: 16px; font-weight: 700; color: #58a6ff;
+    font-variant-numeric: tabular-nums;
+    font-family: 'SF Mono', 'JetBrains Mono', monospace;
+}
+.card {
+    background: #161b22; border: 1px solid #21262d; border-radius: 8px;
+    padding: 12px; display: flex; flex-direction: column; gap: 8px;
+}
+.card-title {
+    font-size: 11px; color: #8b949e; text-transform: uppercase;
+    letter-spacing: 1px;
+}
+#cv-plot {
+    width: 100%; height: 400px; display: block; border-radius: 4px;
+    background: #0d1117;
+}
+.console-out {
+    font-family: 'SF Mono', 'JetBrains Mono', monospace;
+    font-size: 11px; line-height: 1.5; color: #8b949e;
+    max-height: 150px; overflow-y: auto; white-space: pre;
+    padding: 8px; background: #0d1117; border-radius: 4px;
+    border: 1px solid #21262d;
+}
+.js-toggle {
+    font-size: 11px; color: #58a6ff; cursor: pointer; user-select: none;
+    padding: 4px 0;
+}
+.js-toggle:hover { text-decoration: underline; }
+.js-output {
+    font-family: 'SF Mono', 'JetBrains Mono', monospace;
+    font-size: 11px; line-height: 1.4; color: #7ee787;
+    max-height: 200px; overflow-y: auto; white-space: pre;
+    padding: 8px; background: #0d1117; border-radius: 4px;
+    border: 1px solid #21262d; display: none;
+}
+</style>
+</head>
+<body>
+
+<main>
+    <section class="code-panel">
+        <div class="panel-header">
+            <span class="title">gradient_descent.dx</span>
+            <span class="badge badge-live">LIVE</span>
+        </div>
+        <div class="editor-wrap">
+            <pre class="editor-highlight" id="editor-highlight"></pre>
+            <textarea class="editor-textarea" id="source-editor" spellcheck="false"></textarea>
+        </div>
+    </section>
+
+    <section class="viz-panel">
+        <div class="controls">
+            <button id="btn-step" class="secondary">Step</button>
+            <button id="btn-play">Play</button>
+            <button id="btn-reset" class="secondary">Reset</button>
+            <button id="btn-fit" class="secondary">Adatta</button>
+            <div class="control-group">
+                <label>lr</label>
+                <input type="number" id="input-lr" value="0.95" step="0.01" min="0.001">
+            </div>
+            <div class="control-group">
+                <label>x&#8320;</label>
+                <input type="number" id="input-x0" value="6.5" step="0.1">
+            </div>
+        </div>
+
+        <div class="stats-bar">
+            <div class="stat">
+                <div class="label">Step</div>
+                <div class="value" id="stat-step">&mdash;</div>
+            </div>
+            <div class="stat">
+                <div class="label">x</div>
+                <div class="value" id="stat-x">&mdash;</div>
+            </div>
+            <div class="stat">
+                <div class="label">f(x)</div>
+                <div class="value" id="stat-fx">&mdash;</div>
+            </div>
+            <div class="stat">
+                <div class="label">f'(x)</div>
+                <div class="value" id="stat-grad">&mdash;</div>
+            </div>
+            <div class="stat">
+                <div class="label">lr&middot;f'(x)</div>
+                <div class="value" id="stat-stepsize">&mdash;</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Grafico f(x)</div>
+            <canvas id="cv-plot"></canvas>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Console</div>
+            <div class="js-toggle" id="js-toggle">&#9654; Mostra JS generato</div>
+            <div class="js-output" id="js-output"></div>
+            <div class="console-out" id="console-out"></div>
+        </div>
+    </section>
+</main>
+
+<script>
+// ================================================================
+// DX SOURCE
+// ================================================================
+var DX_SOURCE = "-- Gradient Descent interattivo\n-- Modifica f(x) e premi Step!\n\nx : 6.5\nlr : 0.95\n\nfor step in 0..999999\n    y : (x - 1.0) * (x - 1.0)\n    grad : d y d x\n    x : x - lr * grad";
+
+// ================================================================
+// SYNTAX HIGHLIGHTING
+// ================================================================
+function highlightDx(code) {
+    var h = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return h.split('\n').map(function(line) {
+        var cmIdx = line.indexOf('--');
+        var cp = cmIdx >= 0 ? line.slice(0, cmIdx) : line;
+        var cm = cmIdx >= 0 ? '<span class="cm">' + line.slice(cmIdx) + '</span>' : '';
+        cp = cp.replace(/("(?:[^"\\]|\\.)*?")/g, '<span class="str">$1</span>');
+        cp = cp.replace(/\b(type|fun|for|if|in|print|return)\b/g, '<span class="kw">$1</span>');
+        cp = cp.replace(/\b(Vec|Tensor|Float|Int|String)\b/g, '<span class="ty">$1</span>');
+        cp = cp.replace(/\b(it|me)\b/g, '<span class="pr">$1</span>');
+        cp = cp.replace(/\b(relu|softmax|sigmoid|gelu|sin|cos|exp|log|sqrt|abs)\b/g, '<span class="fn">$1</span>');
+        cp = cp.replace(/\bd\s+(\w+)\s+d\s+(\w+)/g, '<span class="op">d</span> $1 <span class="op">d</span> $2');
+        cp = cp.replace(/\bd\s+(\w+)\s*\/\s*d\s+(\w+)/g, '<span class="op">d</span> $1 / <span class="op">d</span> $2');
+        cp = cp.replace(/\b(\d+\.?\d*)\b/g, '<span class="num">$1</span>');
+        return cp + cm;
+    }).join('\n');
+}
+
+function syncHighlight() {
+    var ta = document.getElementById('source-editor');
+    var pre = document.getElementById('editor-highlight');
+    pre.innerHTML = highlightDx(ta.value) + '\n';
+}
+
+function syncScroll() {
+    var ta = document.getElementById('source-editor');
+    var pre = document.getElementById('editor-highlight');
+    pre.scrollTop = ta.scrollTop;
+    pre.scrollLeft = ta.scrollLeft;
+}
+
+// ================================================================
+// STATE
+// ================================================================
+var x = 6.5;
+var lr = 0.95;
+var f = undefined;
+var stepNum = 0;
+var trail = [];
+var consoleLines = [];
+var playing = false;
+var playTimer = null;
+var plotRange = { xMin: -2, xMax: 8, yMin: -1, yMax: 32 };
+
+// ================================================================
+// EXPRESSION EXTRACTION FROM DX SOURCE
+// ================================================================
+function parseSource(source) {
+    // Extract x0
+    var xMatch = source.match(/^x\s*:\s*([\d.eE+-]+)/m);
+    var x0 = xMatch ? parseFloat(xMatch[1]) : 2.5;
+    // Extract lr
+    var lrMatch = source.match(/^lr\s*:\s*([\d.eE+-]+)/m);
+    var lr0 = lrMatch ? parseFloat(lrMatch[1]) : 0.1;
+    // Find derivative target: d <var> d <param> or d <var> / d <param>
+    var diffMatch = source.match(/d\s+(\w+)\s+d\s+(\w+)/) || source.match(/d\s+(\w+)\s*\/\s*d\s+(\w+)/);
+    if (!diffMatch) return { x0: x0, lr: lr0, f: null, expr: null };
+    var varName = diffMatch[1];
+    var paramName = diffMatch[2];
+    // Find assignment: varName : <expr>
+    var assignRe = new RegExp('^\\s*' + varName + '\\s*:\\s*(.+)$', 'm');
+    var assignMatch = source.match(assignRe);
+    if (!assignMatch) return { x0: x0, lr: lr0, f: null, expr: null };
+    var expr = assignMatch[1].trim();
+    // Replace math functions
+    var jsExpr = expr
+        .replace(/\bsin\b/g, 'Math.sin').replace(/\bcos\b/g, 'Math.cos')
+        .replace(/\bexp\b/g, 'Math.exp').replace(/\blog\b/g, 'Math.log')
+        .replace(/\bsqrt\b/g, 'Math.sqrt').replace(/\babs\b/g, 'Math.abs')
+        .replace(/\bpi\b/g, 'Math.PI');
+    try {
+        var fn = new Function(paramName, 'return ' + jsExpr + ';');
+        fn(0); fn(1); // smoke test
+        return { x0: x0, lr: lr0, f: fn, expr: expr, jsExpr: jsExpr, param: paramName };
+    } catch(e) {
+        return { x0: x0, lr: lr0, f: null, expr: expr };
+    }
+}
+
+function getGrad(xval) {
+    var h = 1e-7;
+    return (f(xval + h) - f(xval - h)) / (2 * h);
+}
+
+// ================================================================
+// CONSOLE
+// ================================================================
+function logLine(text) {
+    consoleLines.push(text);
+    if (consoleLines.length > 300) consoleLines.shift();
+    var el = document.getElementById('console-out');
+    el.textContent = consoleLines.join('\n');
+    el.scrollTop = el.scrollHeight;
+}
+
+// ================================================================
+// STATS
+// ================================================================
+function updateStats() {
+    if (typeof f !== 'function') return;
+    var fx = f(x);
+    var grad = getGrad(x);
+    var stepSize = lr * grad;
+    document.getElementById('stat-step').textContent = stepNum;
+    document.getElementById('stat-x').textContent = x.toFixed(6);
+    document.getElementById('stat-fx').textContent = fx.toFixed(6);
+    document.getElementById('stat-grad').textContent = grad.toFixed(6);
+    document.getElementById('stat-stepsize').textContent = stepSize.toFixed(6);
+}
+
+// ================================================================
+// PLOT
+// ================================================================
+function niceSteps(lo, hi, target) {
+    var range = hi - lo;
+    if (range <= 0) return [lo];
+    var rough = range / target;
+    var mag = Math.pow(10, Math.floor(Math.log10(rough)));
+    var norm = rough / mag, step;
+    if (norm < 1.5) step = mag;
+    else if (norm < 3.5) step = 2 * mag;
+    else if (norm < 7.5) step = 5 * mag;
+    else step = 10 * mag;
+    var start = Math.ceil(lo / step) * step;
+    var result = [];
+    for (var v = start; v <= hi + step * 0.01; v += step) result.push(v);
+    return result;
+}
+
+function formatNum(v) {
+    if (Math.abs(v) < 0.001 && v !== 0) return v.toExponential(1);
+    if (Math.abs(v) >= 1000) return v.toExponential(1);
+    if (Number.isInteger(v)) return v.toString();
+    return parseFloat(v.toPrecision(4)).toString();
+}
+
+function autoRange() {
+    if (typeof f !== 'function') return;
+    var xMin = -5, xMax = 8;
+    if (x < xMin + 1) xMin = x - 2;
+    if (x > xMax - 1) xMax = x + 2;
+    for (var i = 0; i < trail.length; i++) {
+        if (trail[i].x < xMin + 0.5) xMin = trail[i].x - 1;
+        if (trail[i].x > xMax - 0.5) xMax = trail[i].x + 1;
+    }
+    var yMin = Infinity, yMax = -Infinity;
+    for (var i = 0; i <= 300; i++) {
+        var xv = xMin + (xMax - xMin) * i / 300;
+        try {
+            var y = f(xv);
+            if (isFinite(y)) { yMin = Math.min(yMin, y); yMax = Math.max(yMax, y); }
+        } catch(e) {}
+    }
+    var yPad = (yMax - yMin) * 0.15 || 1;
+    plotRange = { xMin: xMin, xMax: xMax, yMin: yMin - yPad, yMax: yMax + yPad };
+}
+
+function drawPlot() {
+    if (typeof f !== 'function') return;
+    var cvEl = document.getElementById('cv-plot');
+    var dpr = window.devicePixelRatio || 1;
+    var rect = cvEl.getBoundingClientRect();
+    var w = rect.width, h = rect.height;
+    cvEl.width = Math.round(w * dpr);
+    cvEl.height = Math.round(h * dpr);
+    var ctx = cvEl.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    var pad = { top: 20, right: 20, bottom: 36, left: 52 };
+    var pw = w - pad.left - pad.right;
+    var ph = h - pad.top - pad.bottom;
+    var xMin = plotRange.xMin, xMax = plotRange.xMax;
+    var yMin = plotRange.yMin, yMax = plotRange.yMax;
+
+    function toSX(xv) { return pad.left + (xv - xMin) / (xMax - xMin) * pw; }
+    function toSY(yv) { return pad.top + (1 - (yv - yMin) / (yMax - yMin)) * ph; }
+
+    ctx.fillStyle = '#0d1117';
+    ctx.fillRect(0, 0, w, h);
+
+    // Grid
+    ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+    ctx.font = '10px -apple-system, sans-serif'; ctx.fillStyle = '#484f58';
+    var ySteps = niceSteps(yMin, yMax, 6);
+    for (var yi = 0; yi < ySteps.length; yi++) {
+        var sy = toSY(ySteps[yi]);
+        if (sy < pad.top || sy > pad.top + ph) continue;
+        ctx.beginPath(); ctx.moveTo(pad.left, sy); ctx.lineTo(pad.left + pw, sy); ctx.stroke();
+        ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+        ctx.fillText(formatNum(ySteps[yi]), pad.left - 6, sy);
+    }
+    var xSteps = niceSteps(xMin, xMax, 8);
+    for (var xi = 0; xi < xSteps.length; xi++) {
+        var sx = toSX(xSteps[xi]);
+        if (sx < pad.left || sx > pad.left + pw) continue;
+        ctx.beginPath(); ctx.moveTo(sx, pad.top); ctx.lineTo(sx, pad.top + ph); ctx.stroke();
+        ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        ctx.fillText(formatNum(xSteps[xi]), sx, pad.top + ph + 6);
+    }
+
+    // Zero axes
+    ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1.5;
+    if (yMin <= 0 && yMax >= 0) {
+        var sy0 = toSY(0);
+        ctx.beginPath(); ctx.moveTo(pad.left, sy0); ctx.lineTo(pad.left + pw, sy0); ctx.stroke();
+    }
+    if (xMin <= 0 && xMax >= 0) {
+        var sx0 = toSX(0);
+        ctx.beginPath(); ctx.moveTo(sx0, pad.top); ctx.lineTo(sx0, pad.top + ph); ctx.stroke();
+    }
+
+    ctx.save();
+    ctx.beginPath(); ctx.rect(pad.left, pad.top, pw, ph); ctx.clip();
+
+    // Curve f(x)
+    ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    var started = false;
+    for (var i = 0; i <= 500; i++) {
+        var xv = xMin + (xMax - xMin) * i / 500;
+        try {
+            var yv = f(xv);
+            if (!isFinite(yv)) { started = false; continue; }
+            if (!started) { ctx.moveTo(toSX(xv), toSY(yv)); started = true; }
+            else ctx.lineTo(toSX(xv), toSY(yv));
+        } catch(e) { started = false; }
+    }
+    ctx.stroke();
+
+    // Trail
+    for (var ti = 0; ti < trail.length; ti++) {
+        var tp = trail[ti];
+        var alpha = 0.08 + 0.45 * (ti / trail.length);
+        ctx.beginPath();
+        ctx.arc(toSX(tp.x), toSY(tp.fx), 4, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(139, 148, 158, ' + alpha + ')';
+        ctx.fill();
+    }
+
+    // Current point + gradient arrow
+    var fx = f(x);
+    var gradNow = getGrad(x);
+    var stepSize = lr * gradNow;
+    var bx = toSX(x), by = toSY(fx);
+    var arrowTargetX = x - stepSize;
+    var atx = toSX(arrowTargetX);
+    var arrowLen = atx - bx;
+
+    if (Math.abs(arrowLen) > 2) {
+        var arrowColor = gradNow > 0 ? '#f85149' : '#58a6ff';
+        ctx.strokeStyle = arrowColor; ctx.fillStyle = arrowColor; ctx.lineWidth = 2.5;
+        var maxPx = pw * 0.4;
+        var dtx = Math.abs(arrowLen) > maxPx ? bx + Math.sign(arrowLen) * maxPx : atx;
+        ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(dtx, by); ctx.stroke();
+        var dir = Math.sign(dtx - bx);
+        ctx.beginPath();
+        ctx.moveTo(dtx, by);
+        ctx.lineTo(dtx - dir * 8, by - 5);
+        ctx.lineTo(dtx - dir * 8, by + 5);
+        ctx.closePath(); ctx.fill();
+        ctx.font = '10px -apple-system, sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+        ctx.fillText(
+            (gradNow > 0 ? '\u2190 ' : '\u2192 ') + Math.abs(stepSize).toFixed(4),
+            (bx + dtx) / 2, by - 8
+        );
+    }
+
+    // Ball
+    ctx.shadowColor = '#f0883e'; ctx.shadowBlur = 12;
+    ctx.beginPath(); ctx.arc(bx, by, 8, 0, Math.PI * 2);
+    ctx.fillStyle = '#f0883e'; ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+
+    ctx.restore();
+
+    // Axis labels
+    ctx.fillStyle = '#8b949e'; ctx.font = '11px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('x', pad.left + pw / 2, h - 2);
+    ctx.save();
+    ctx.translate(12, pad.top + ph / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText('f(x)', 0, 0);
+    ctx.restore();
+}
+
+// ================================================================
+// GD STEP
+// ================================================================
+function doStep() {
+    if (typeof f !== 'function') return;
+    var grad = getGrad(x);
+    var fx = f(x);
+    trail.push({ x: x, fx: fx });
+    if (trail.length > 300) trail.shift();
+
+    // Read live lr from UI
+    var uiLr = parseFloat(document.getElementById('input-lr').value);
+    if (isFinite(uiLr) && uiLr > 0) lr = uiLr;
+
+    x = x - lr * grad;
+    stepNum++;
+    logLine('step ' + stepNum + ': x=' + x.toFixed(4) + ', f(x)=' + f(x).toFixed(4) + ', grad=' + grad.toFixed(4));
+    updateStats();
+    drawPlot();
+}
+
+// ================================================================
+// COMPILE (parse source, extract expression)
+// ================================================================
+function compileSource() {
+    var source = document.getElementById('source-editor').value;
+    var result = parseSource(source);
+
+    if (!result.f) {
+        logLine('Errore: impossibile estrarre f(x) dal sorgente.');
+        return false;
+    }
+
+    f = result.f;
+    x = result.x0;
+    lr = result.lr;
+    stepNum = 0;
+    trail = [];
+
+    document.getElementById('input-x0').value = result.x0;
+    document.getElementById('input-lr').value = result.lr;
+
+    // Show extracted JS
+    var jsText = '// Estratto dal sorgente dx:\n';
+    jsText += 'function f(' + (result.param || 'x') + ') { return ' + result.jsExpr + '; }\n';
+    jsText += "// Gradiente: derivata numerica (h = 1e-7)\n";
+    jsText += "function df(x) { return (f(x+h) - f(x-h)) / (2*h); }\n";
+    jsText += '// x\u2080 = ' + result.x0 + ', lr = ' + result.lr;
+    document.getElementById('js-output').textContent = jsText;
+
+    autoRange();
+    updateStats();
+    drawPlot();
+    logLine('Pronto! x\u2080 = ' + x + ', lr = ' + lr + ', f(x) = ' + result.expr);
+    return true;
+}
+
+// ================================================================
+// INIT
+// ================================================================
+function init() {
+    var ta = document.getElementById('source-editor');
+    ta.value = DX_SOURCE;
+    syncHighlight();
+    ta.addEventListener('input', syncHighlight);
+    ta.addEventListener('scroll', syncScroll);
+    ta.addEventListener('keydown', function(e) {
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            var start = ta.selectionStart, end = ta.selectionEnd;
+            ta.value = ta.value.substring(0, start) + '    ' + ta.value.substring(end);
+            ta.selectionStart = ta.selectionEnd = start + 4;
+            syncHighlight();
+        }
+    });
+
+    // Auto-recompile on blur
+    var lastSource = '';
+    ta.addEventListener('blur', function() {
+        var src = ta.value;
+        if (src !== lastSource) {
+            lastSource = src;
+            if (playing) { playing = false; clearInterval(playTimer); document.getElementById('btn-play').textContent = 'Play'; }
+            consoleLines = [];
+            compileSource();
+        }
+    });
+
+    // JS toggle
+    document.getElementById('js-toggle').addEventListener('click', function() {
+        var el = document.getElementById('js-output');
+        var toggle = document.getElementById('js-toggle');
+        if (el.style.display === 'none' || !el.style.display) {
+            el.style.display = 'block';
+            toggle.innerHTML = '&#9660; Nascondi JS generato';
+        } else {
+            el.style.display = 'none';
+            toggle.innerHTML = '&#9654; Mostra JS generato';
+        }
+    });
+
+    // Buttons
+    document.getElementById('btn-step').addEventListener('click', doStep);
+
+    document.getElementById('btn-play').addEventListener('click', function() {
+        if (typeof f !== 'function') return;
+        if (playing) {
+            playing = false;
+            clearInterval(playTimer);
+            document.getElementById('btn-play').textContent = 'Play';
+        } else {
+            playing = true;
+            document.getElementById('btn-play').textContent = 'Pausa';
+            playTimer = setInterval(doStep, 50);
+        }
+    });
+
+    document.getElementById('btn-reset').addEventListener('click', function() {
+        if (playing) { playing = false; clearInterval(playTimer); document.getElementById('btn-play').textContent = 'Play'; }
+        consoleLines = [];
+        document.getElementById('console-out').textContent = '';
+        compileSource();
+    });
+
+    document.getElementById('btn-fit').addEventListener('click', function() {
+        if (typeof f !== 'function') return;
+        autoRange();
+        drawPlot();
+    });
+
+    // lr/x0 inputs
+    document.getElementById('input-lr').addEventListener('change', function() {
+        var v = parseFloat(this.value);
+        if (isFinite(v) && v > 0) lr = v;
+    });
+    document.getElementById('input-x0').addEventListener('change', function() {
+        var v = parseFloat(this.value);
+        if (isFinite(v)) {
+            x = v;
+            trail = [];
+            stepNum = 0;
+            autoRange();
+            updateStats();
+            drawPlot();
+        }
+    });
+
+    window.addEventListener('resize', function() {
+        if (typeof f === 'function') drawPlot();
+    });
+
+    // Initial compile
+    compileSource();
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

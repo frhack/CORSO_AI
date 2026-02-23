@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dx — Derivata</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    background: #0a0a0a; color: #e0e0e0;
+    min-height: 100vh;
+}
+
+main {
+    display: grid; grid-template-columns: 420px 1fr;
+    height: 100vh;
+}
+@media (max-width: 900px) {
+    main { grid-template-columns: 1fr; }
+    .code-panel { max-height: 40vh; }
+}
+
+/* ── Code panel ── */
+.code-panel {
+    border-right: 1px solid #21262d; overflow: auto; padding: 0;
+    background: #0d1117; display: flex; flex-direction: column;
+}
+.panel-header {
+    font-size: 12px; color: #8b949e; text-transform: uppercase;
+    letter-spacing: 1px; padding: 10px 16px;
+    border-bottom: 1px solid #21262d; background: #161b22;
+    display: flex; align-items: center; gap: 10px;
+}
+.panel-header .title { flex: 1; }
+.editor-wrap {
+    position: relative; width: 100%; flex: 1; overflow: hidden;
+}
+.editor-wrap pre, .editor-wrap textarea {
+    font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Menlo', 'Consolas', monospace;
+    font-size: 13px; line-height: 1.5; padding: 12px 16px;
+    tab-size: 4; margin: 0; border: none; outline: none;
+    white-space: pre; overflow: auto;
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+}
+.editor-highlight {
+    background: #0d1117; color: #c9d1d9; pointer-events: none; z-index: 0;
+}
+.editor-textarea {
+    background: transparent; color: transparent; caret-color: #c9d1d9;
+    z-index: 1; resize: none; -webkit-text-fill-color: transparent;
+}
+.kw { color: #ff7b72; }
+.ty { color: #79c0ff; }
+.fn { color: #d2a8ff; }
+.num { color: #79c0ff; }
+.str { color: #a5d6ff; }
+.cm { color: #8b949e; font-style: italic; }
+.pr { color: #ffa657; font-weight: 600; }
+.op { color: #ff7b72; }
+
+/* ── Right panel ── */
+.right-panel {
+    display: flex; flex-direction: column;
+    background: #0a0a0a; overflow: hidden;
+    position: relative;
+}
+
+canvas { flex: 1; display: block; }
+
+button {
+    background: #238636; color: #fff; border: none; border-radius: 6px;
+    padding: 7px 20px; font-size: 13px; font-weight: 600; cursor: pointer;
+    font-family: inherit; transition: background 0.15s;
+}
+button:hover { background: #2ea043; }
+
+.bottom {
+    padding: 16px 0 22px;
+    background: #0a0a0a;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    z-index: 10;
+}
+
+.values {
+    display: flex;
+    gap: 50px;
+    font-size: 1.05rem;
+}
+.values .item { text-align: center; }
+.values .label {
+    color: #666;
+    font-size: 0.75rem;
+    margin-bottom: 4px;
+}
+.values .num {
+    font-size: 1.3rem;
+    font-weight: 600;
+}
+.values .num.x-val { color: #e0e0e0; }
+.values .num.fx-val { color: #5e9cff; }
+.values .num.dfx-val { color: #f0c040; }
+
+.slider-wrap { width: 100%; padding: 0 16px; }
+input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    background: #333;
+    border-radius: 2px;
+    outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    background: #f0c040;
+    border-radius: 50%;
+    cursor: pointer;
+}
+input[type="range"]::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    background: #f0c040;
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+}
+</style>
+</head>
+<body>
+
+<main>
+    <section class="code-panel">
+        <div class="panel-header">
+            <span class="title">derivative.dx</span>
+            <button id="btn-run">Run</button>
+        </div>
+        <div class="editor-wrap">
+            <pre class="editor-highlight" id="editor-highlight"></pre>
+            <textarea class="editor-textarea" id="source-editor" spellcheck="false"></textarea>
+        </div>
+    </section>
+
+    <section class="right-panel">
+        <canvas id="graph"></canvas>
+
+        <div class="bottom">
+            <div class="values">
+                <div class="item">
+                    <div class="label">x</div>
+                    <div class="num x-val" id="v-x">0.00</div>
+                </div>
+                <div class="item">
+                    <div class="label">f(x)</div>
+                    <div class="num fx-val" id="v-fx">0.00</div>
+                </div>
+                <div class="item">
+                    <div class="label">f'(x)</div>
+                    <div class="num dfx-val" id="v-dfx">0.00</div>
+                </div>
+            </div>
+            <div class="slider-wrap">
+                <input type="range" id="slider" min="-3" max="3" step="0.01" value="1">
+            </div>
+        </div>
+    </section>
+</main>
+
+<script>
+const DX_SOURCE = `-- Derivata: retta tangente e gradiente
+-- Sposta il cursore per cambiare x
+
+f(x) : x * x
+
+-- la curva blu e' f(x)
+-- la retta tratteggiata e' la tangente
+-- la freccia gialla e' f'(x)`;
+
+// ── Syntax highlighting ──
+function highlightDx(code) {
+    let h = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return h.split('\n').map(line => {
+        const cmIdx = line.indexOf('--');
+        let cp = cmIdx >= 0 ? line.slice(0, cmIdx) : line;
+        let cm = cmIdx >= 0 ? '<span class="cm">' + line.slice(cmIdx) + '</span>' : '';
+        cp = cp.replace(/("(?:[^"\\]|\\.)*?")/g, '<span class="str">$1</span>');
+        cp = cp.replace(/\b(type|fun|for|if|in|print|arena|let|return)\b/g, '<span class="kw">$1</span>');
+        cp = cp.replace(/\b(Net|Vec|Tensor|Float|Int|String)\b/g, '<span class="ty">$1</span>');
+        cp = cp.replace(/\b(it|me)\b/g, '<span class="pr">$1</span>');
+        cp = cp.replace(/\b(nn|mse|sigmoid|relu|softmax|gelu|sqrt|sin|cos|exp|log|abs)\b/g, '<span class="fn">$1</span>');
+        cp = cp.replace(/\bd\b/g, '<span class="op">d</span>');
+        cp = cp.replace(/\b(\d+\.?\d*)\b/g, '<span class="num">$1</span>');
+        return cp + cm;
+    }).join('\n');
+}
+
+const ta = document.getElementById('source-editor');
+const pre = document.getElementById('editor-highlight');
+
+function syncHighlight() { pre.innerHTML = highlightDx(ta.value) + '\n'; }
+function syncScroll() { pre.scrollTop = ta.scrollTop; pre.scrollLeft = ta.scrollLeft; }
+ta.addEventListener('input', syncHighlight);
+ta.addEventListener('scroll', syncScroll);
+
+// ── Parse f(x) from dx source ──
+const MATH_FNS = { sin: 'Math.sin', cos: 'Math.cos', tan: 'Math.tan',
+    sqrt: 'Math.sqrt', abs: 'Math.abs', exp: 'Math.exp', log: 'Math.log',
+    pow: 'Math.pow', PI: 'Math.PI', pi: 'Math.PI' };
+
+function parseFunction(src) {
+    // Match: f(x) : expr  or  f(x) = expr
+    const m = src.match(/f\s*\(\s*(\w+)\s*\)\s*[:=]\s*(.+)/);
+    if (!m) return null;
+    const varName = m[1];
+    let expr = m[2].trim();
+    // Replace ^ with ** for exponentiation
+    expr = expr.replace(/\^/g, '**');
+    // Replace math function names
+    for (const [k, v] of Object.entries(MATH_FNS)) {
+        expr = expr.replace(new RegExp('\\b' + k + '\\b', 'g'), v);
+    }
+    try {
+        const fn = new Function(varName, '"use strict"; return (' + expr + ')');
+        fn(1); // test
+        return fn;
+    } catch { return null; }
+}
+
+function numericalDeriv(fn, x) {
+    const h = 1e-7;
+    return (fn(x + h) - fn(x - h)) / (2 * h);
+}
+
+let f = x => x * x;
+let df = x => numericalDeriv(f, x);
+
+function reparse() {
+    const fn = parseFunction(ta.value);
+    if (fn) {
+        f = fn;
+        df = x => numericalDeriv(f, x);
+    }
+}
+
+// ── Canvas ──
+const canvas = document.getElementById('graph');
+const ctx = canvas.getContext('2d');
+const bottomH = 100;
+
+function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.parentElement.clientWidth;
+    const h = canvas.parentElement.clientHeight - bottomH;
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+let W, H;
+const yMin = -1.5, yMax = 10.5;
+let xMin, xMax;
+
+function updateRanges() {
+    const yRange = yMax - yMin;
+    const scale = H / yRange;
+    const xRange = W / scale;
+    xMin = -xRange / 2;
+    xMax = xRange / 2;
+}
+
+function toScreen(wx, wy) {
+    return [
+        (wx - xMin) / (xMax - xMin) * W,
+        H - (wy - yMin) / (yMax - yMin) * H
+    ];
+}
+
+function draw(xVal) {
+    W = canvas.width / (window.devicePixelRatio || 1);
+    H = canvas.height / (window.devicePixelRatio || 1);
+    updateRanges();
+
+    slider.min = xMin.toFixed(1);
+    slider.max = xMax.toFixed(1);
+
+    ctx.clearRect(0, 0, W, H);
+
+    // Grid
+    ctx.strokeStyle = '#1a1a1a';
+    ctx.lineWidth = 1;
+    for (let gx = Math.ceil(xMin); gx <= xMax; gx++) {
+        const [sx] = toScreen(gx, 0);
+        ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, H); ctx.stroke();
+    }
+    for (let gy = Math.ceil(yMin); gy <= yMax; gy++) {
+        const [, sy] = toScreen(0, gy);
+        ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(W, sy); ctx.stroke();
+    }
+
+    // Axes
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    const [ax0, ay0] = toScreen(0, 0);
+    ctx.beginPath(); ctx.moveTo(0, ay0); ctx.lineTo(W, ay0); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(ax0, 0); ctx.lineTo(ax0, H); ctx.stroke();
+
+    // Axis labels
+    ctx.fillStyle = '#444';
+    ctx.font = '11px SF Mono, Consolas, monospace';
+    ctx.textAlign = 'center';
+    for (let gx = Math.ceil(xMin); gx <= xMax; gx++) {
+        if (gx === 0) continue;
+        const [sx] = toScreen(gx, 0);
+        ctx.fillText(gx, sx, ay0 + 14);
+    }
+    ctx.textAlign = 'right';
+    for (let gy = 1; gy <= yMax; gy += 2) {
+        const [, sy] = toScreen(0, gy);
+        ctx.fillText(gy, ax0 - 8, sy + 4);
+    }
+
+    // Curve f(x)
+    ctx.strokeStyle = '#5e9cff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let px = 0; px <= W; px++) {
+        const wx = xMin + (px / W) * (xMax - xMin);
+        const wy = f(wx);
+        const [sx, sy] = toScreen(wx, wy);
+        if (px === 0) ctx.moveTo(sx, sy);
+        else ctx.lineTo(sx, sy);
+    }
+    ctx.stroke();
+
+    // Tangent line
+    const yVal = f(xVal);
+    const slope = df(xVal);
+    const tX0 = xMin, tX1 = xMax;
+    const tY0 = slope * (tX0 - xVal) + yVal;
+    const tY1 = slope * (tX1 - xVal) + yVal;
+    ctx.strokeStyle = 'rgba(240, 192, 64, 0.4)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    const [tx0, ty0] = toScreen(tX0, tY0);
+    const [tx1, ty1] = toScreen(tX1, tY1);
+    ctx.moveTo(tx0, ty0);
+    ctx.lineTo(tx1, ty1);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Vertical dashed line from (x, 0) to (x, f(x))
+    const [bx, by] = toScreen(xVal, 0);
+    const [sx, sy] = toScreen(xVal, yVal);
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.lineTo(sx, sy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Gradient arrow on x axis
+    const gradLen = slope;
+    const arrowEndX = xVal + gradLen;
+    const [asx] = toScreen(xVal, 0);
+    const [aex] = toScreen(arrowEndX, 0);
+
+    if (Math.abs(gradLen) > 0.01) {
+        ctx.strokeStyle = '#f0c040';
+        ctx.fillStyle = '#f0c040';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(asx, by);
+        ctx.lineTo(aex, by);
+        ctx.stroke();
+
+        const headLen = 8;
+        const dir = gradLen > 0 ? 1 : -1;
+        ctx.beginPath();
+        ctx.moveTo(aex, by);
+        ctx.lineTo(aex - dir * headLen, by - 5);
+        ctx.lineTo(aex - dir * headLen, by + 5);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    // Point on x axis
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(bx, by, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#5e9cff';
+    ctx.beginPath(); ctx.arc(bx, by, 3, 0, Math.PI * 2); ctx.fill();
+
+    // Point on curve
+    const [cpx, cpy] = toScreen(xVal, yVal);
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(cpx, cpy, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#5e9cff';
+    ctx.beginPath(); ctx.arc(cpx, cpy, 4, 0, Math.PI * 2); ctx.fill();
+
+    // Update values
+    document.getElementById('v-x').textContent = xVal.toFixed(2);
+    document.getElementById('v-fx').textContent = yVal.toFixed(2);
+    document.getElementById('v-dfx').textContent = slope.toFixed(2);
+}
+
+const slider = document.getElementById('slider');
+slider.addEventListener('input', () => draw(parseFloat(slider.value)));
+
+// ── Run button: reparse function ──
+document.getElementById('btn-run').addEventListener('click', () => {
+    reparse();
+    draw(parseFloat(slider.value));
+});
+
+// Ctrl+Enter to run
+ta.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); reparse(); draw(parseFloat(slider.value)); }
+    if (e.key === 'Tab') {
+        e.preventDefault();
+        const s = ta.selectionStart, end = ta.selectionEnd;
+        ta.value = ta.value.substring(0, s) + '    ' + ta.value.substring(end);
+        ta.selectionStart = ta.selectionEnd = s + 4;
+        syncHighlight();
+    }
+});
+
+// ── Init ──
+ta.value = DX_SOURCE;
+syncHighlight();
+
+function onResize() { resize(); draw(parseFloat(slider.value)); }
+window.addEventListener('resize', onResize);
+onResize();
+</script>
+
+</body>
+</html>

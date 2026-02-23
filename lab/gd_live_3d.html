@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dx — Gradient Descent 3D</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    background: #0a0a0a; color: #e0e0e0;
+    min-height: 100vh;
+}
+
+main {
+    display: grid; grid-template-columns: 420px 1fr;
+    height: 100vh;
+}
+@media (max-width: 900px) {
+    main { grid-template-columns: 1fr; }
+    .code-panel { max-height: 40vh; }
+}
+
+/* ── Code panel ── */
+.code-panel {
+    border-right: 1px solid #21262d; overflow: auto; padding: 0;
+    background: #0d1117; display: flex; flex-direction: column;
+}
+.editor-wrap {
+    position: relative; width: 100%; flex: 1; overflow: hidden;
+}
+.editor-wrap pre, .editor-wrap textarea {
+    font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Menlo', 'Consolas', monospace;
+    font-size: 13px; line-height: 1.5; padding: 12px 16px;
+    tab-size: 4; margin: 0; border: none; outline: none;
+    white-space: pre; overflow: auto;
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+}
+.editor-highlight {
+    background: #0d1117; color: #c9d1d9; pointer-events: none; z-index: 0;
+}
+.editor-textarea {
+    background: transparent; color: transparent; caret-color: #c9d1d9;
+    z-index: 1; resize: none; -webkit-text-fill-color: transparent;
+}
+.kw { color: #ff7b72; }
+.ty { color: #79c0ff; }
+.fn { color: #d2a8ff; }
+.num { color: #79c0ff; }
+.str { color: #a5d6ff; }
+.cm { color: #8b949e; font-style: italic; }
+.pr { color: #ffa657; font-weight: 600; }
+.op { color: #ff7b72; }
+
+/* ── Viz panel ── */
+.viz-panel {
+    display: flex; flex-direction: column;
+    background: #0a0a0a; overflow: hidden;
+}
+
+.stats-bar {
+    display: flex; gap: 24px; padding: 10px 16px; flex-wrap: wrap;
+    border-bottom: 1px solid #1a1a1a;
+}
+.stat .label {
+    font-size: 10px; color: #666; text-transform: uppercase;
+    letter-spacing: 0.8px; margin-bottom: 2px;
+}
+.stat .value {
+    font-size: 16px; font-weight: 700; color: #5e9cff;
+    font-variant-numeric: tabular-nums;
+}
+
+.canvas-wrap {
+    flex: 1; position: relative; min-height: 0;
+}
+canvas#cv {
+    display: block; width: 100%; height: 100%;
+    cursor: crosshair;
+}
+.hint {
+    position: absolute; bottom: 8px; right: 12px;
+    font-size: 0.6rem; color: #333;
+}
+
+.controls-bar {
+    padding: 10px 16px; border-top: 1px solid #1a1a1a;
+    display: flex; flex-direction: column; gap: 8px;
+}
+.btn-row {
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+}
+button {
+    background: #238636; color: #fff; border: none; border-radius: 6px;
+    padding: 6px 16px; font-size: 12px; font-weight: 600; cursor: pointer;
+    font-family: inherit; transition: background 0.15s;
+}
+button:hover { background: #2ea043; }
+button.secondary { background: #30363d; }
+button.secondary:hover { background: #3d444d; }
+button.danger { background: #da3633; }
+button.danger:hover { background: #f85149; }
+
+.slider-row {
+    display: flex; align-items: center; gap: 10px;
+}
+.slider-row label {
+    font-size: 11px; color: #8b949e; min-width: 24px; text-align: right;
+}
+.slider-row input[type="range"] {
+    -webkit-appearance: none; appearance: none;
+    flex: 1; height: 4px;
+    background: #333; border-radius: 2px; outline: none;
+}
+.slider-row input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 18px; height: 18px;
+    background: #f0c040; border-radius: 50%; cursor: pointer;
+}
+.slider-row input[type="range"]::-moz-range-thumb {
+    width: 18px; height: 18px;
+    background: #f0c040; border-radius: 50%; cursor: pointer; border: none;
+}
+.slider-row .val {
+    font-size: 11px; color: #c9d1d9; min-width: 44px;
+    font-variant-numeric: tabular-nums;
+}
+
+.fn-row {
+    display: flex; align-items: center; gap: 8px;
+}
+.fn-row span { font-size: 11px; color: #8b949e; }
+.fn-btn {
+    background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+    border-radius: 6px; padding: 3px 10px; font-size: 11px;
+    font-family: inherit; cursor: pointer; transition: all 0.15s;
+}
+.fn-btn:hover { border-color: #58a6ff; background: #21262d; }
+.fn-btn.active { background: #1f3a5f; border-color: #58a6ff; color: #58a6ff; }
+</style>
+</head>
+<body>
+
+<main>
+    <section class="code-panel">
+        <div class="editor-wrap">
+            <pre class="editor-highlight" id="editor-highlight"></pre>
+            <textarea class="editor-textarea" id="source-editor" spellcheck="false"></textarea>
+        </div>
+    </section>
+
+    <section class="viz-panel">
+        <div class="stats-bar">
+            <div class="stat">
+                <div class="label">Step</div>
+                <div class="value" id="stat-step">0</div>
+            </div>
+            <div class="stat">
+                <div class="label">x, y</div>
+                <div class="value" id="stat-xy">2.50, 2.50</div>
+            </div>
+            <div class="stat">
+                <div class="label">f(x,y)</div>
+                <div class="value" id="stat-fxy">&mdash;</div>
+            </div>
+            <div class="stat">
+                <div class="label">&nabla;f</div>
+                <div class="value" id="stat-grad">&mdash;</div>
+            </div>
+        </div>
+
+        <div class="canvas-wrap">
+            <canvas id="cv"></canvas>
+            <div class="hint">shift+drag to rotate</div>
+        </div>
+
+        <div class="controls-bar">
+            <div class="btn-row">
+                <button id="btn-step">Step</button>
+                <button id="btn-play">Play</button>
+                <button id="btn-reset" class="secondary">Reset</button>
+            </div>
+            <div class="slider-row">
+                <label>lr</label>
+                <input type="range" id="sl-lr" min="0.01" max="1.0" step="0.01" value="0.1">
+                <span class="val" id="val-lr">0.10</span>
+            </div>
+            <div class="slider-row">
+                <label>x&#8320;</label>
+                <input type="range" id="sl-x0" min="-3" max="3" step="0.1" value="2.5">
+                <span class="val" id="val-x0">2.50</span>
+            </div>
+            <div class="slider-row">
+                <label>y&#8320;</label>
+                <input type="range" id="sl-y0" min="-3" max="3" step="0.1" value="2.5">
+                <span class="val" id="val-y0">2.50</span>
+            </div>
+            <div class="fn-row">
+                <span>f(x,y):</span>
+                <button class="fn-btn active" data-fn="bowl">x&sup2;+y&sup2;</button>
+                <button class="fn-btn" data-fn="saddle">x&sup2;&minus;y&sup2;</button>
+                <button class="fn-btn" data-fn="rosenbrock">Rosenbrock</button>
+                <button class="fn-btn" data-fn="beale">Beale</button>
+            </div>
+        </div>
+    </section>
+</main>
+
+<script>
+// ================================================================
+// STATE
+// ================================================================
+let px = 2.5, py = 2.5;   // current GD position
+let x0 = 2.5, y0 = 2.5;  // starting position
+let lr = 0.1;
+let stepCount = 0;
+let trail = [];            // [{x, y}]
+let playing = false;
+let animId = null;
+let fnName = 'bowl';
+
+// 3D view
+let az = 2.3, el = 0.55;
+let dragging = false, rotating = false;
+let lastMX = 0, lastMY = 0;
+
+const RANGE = 3.6;
+const GRID = 40;
+
+// ================================================================
+// FUNCTIONS
+// ================================================================
+const FN = {
+    bowl: {
+        f: (x, y) => x * x + y * y,
+        gx: (x, y) => 2 * x,
+        gy: (x, y) => 2 * y,
+        dx: `x * x + y * y`,
+        range: 3.6,
+    },
+    saddle: {
+        f: (x, y) => x * x - y * y,
+        gx: (x, y) => 2 * x,
+        gy: (x, y) => -2 * y,
+        dx: `x * x - y * y`,
+        range: 3.6,
+    },
+    rosenbrock: {
+        f: (x, y) => (1 - x) * (1 - x) + 100 * (y - x * x) * (y - x * x),
+        gx: (x, y) => -2 * (1 - x) + 100 * 2 * (y - x * x) * (-2 * x),
+        gy: (x, y) => 100 * 2 * (y - x * x),
+        dx: `(1.0 - x)*(1.0 - x) + 100.0*(y - x*x)*(y - x*x)`,
+        range: 2.5,
+    },
+    beale: {
+        f: (x, y) => (1.5 - x + x * y) ** 2 + (2.25 - x + x * y * y) ** 2 + (2.625 - x + x * y * y * y) ** 2,
+        gx: (x, y) => {
+            const a = 1.5 - x + x * y, b = 2.25 - x + x * y * y, c = 2.625 - x + x * y * y * y;
+            return 2 * a * (-1 + y) + 2 * b * (-1 + y * y) + 2 * c * (-1 + y * y * y);
+        },
+        gy: (x, y) => {
+            const a = 1.5 - x + x * y, b = 2.25 - x + x * y * y, c = 2.625 - x + x * y * y * y;
+            return 2 * a * x + 2 * b * 2 * x * y + 2 * c * 3 * x * y * y;
+        },
+        dx: `(1.5-x+x*y)^2 + (2.25-x+x*y*y)^2 + (2.625-x+x*y*y*y)^2`,
+        range: 4.5,
+    },
+};
+
+function curFn() { return FN[fnName]; }
+function f(x, y) { return curFn().f(x, y); }
+function curRange() { return curFn().range || RANGE; }
+
+// ================================================================
+// DX SOURCE
+// ================================================================
+function makeDxSource() {
+    const fn = curFn();
+    return `-- Gradient Descent 3D
+-- Modifica i parametri e premi Reset
+
+x : ${x0.toFixed(1)}
+y : ${y0.toFixed(1)}
+lr : ${lr.toFixed(2)}
+
+for step in 0..999
+    z : ${fn.dx}
+    gx : d z / d x
+    gy : d z / d y
+    x : x - lr * gx
+    y : y - lr * gy`;
+}
+
+// ================================================================
+// SYNTAX HIGHLIGHTING
+// ================================================================
+function highlightDx(code) {
+    let h = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return h.split('\n').map(line => {
+        const cmIdx = line.indexOf('--');
+        let cp = cmIdx >= 0 ? line.slice(0, cmIdx) : line;
+        let cm = cmIdx >= 0 ? '<span class="cm">' + line.slice(cmIdx) + '</span>' : '';
+        cp = cp.replace(/("(?:[^"\\]|\\.)*?")/g, '<span class="str">$1</span>');
+        cp = cp.replace(/\b(type|fun|for|if|in|print|arena|let|return)\b/g, '<span class="kw">$1</span>');
+        cp = cp.replace(/\b(Net|Vec|Tensor|Float|Int|String)\b/g, '<span class="ty">$1</span>');
+        cp = cp.replace(/\b(it|me)\b/g, '<span class="pr">$1</span>');
+        cp = cp.replace(/\b(nn|mse|sigmoid|relu|softmax|gelu)\b/g, '<span class="fn">$1</span>');
+        cp = cp.replace(/\bd\s+(\w+)\s*\/\s*d\s+(\w+)/g, '<span class="op">d</span> $1 / <span class="op">d</span> $2');
+        cp = cp.replace(/ \. /g, ' \u00b7 ');
+        cp = cp.replace(/\b(\d+\.?\d*)\b/g, '<span class="num">$1</span>');
+        return cp + cm;
+    }).join('\n');
+}
+
+function syncHighlight() {
+    pre.innerHTML = highlightDx(ta.value) + '\n';
+}
+function syncScroll() {
+    pre.scrollTop = ta.scrollTop;
+    pre.scrollLeft = ta.scrollLeft;
+}
+
+// ================================================================
+// PARSE CODE
+// ================================================================
+function parseCode() {
+    const code = ta.value;
+    const mx = code.match(/^x\s*:\s*(-?[\d.]+)/m);
+    const my = code.match(/^y\s*:\s*(-?[\d.]+)/m);
+    const ml = code.match(/^lr\s*:\s*(-?[\d.]+)/m);
+    if (mx) { x0 = parseFloat(mx[1]); slX0.value = x0; valX0.textContent = x0.toFixed(1); }
+    if (my) { y0 = parseFloat(my[1]); slY0.value = y0; valY0.textContent = y0.toFixed(1); }
+    if (ml) { lr = parseFloat(ml[1]); slLr.value = lr; valLr.textContent = lr.toFixed(2); }
+}
+
+function updateCodeFromState() {
+    let code = ta.value;
+    code = code.replace(/^(x\s*:\s*)-?[\d.]+/m, `$1${x0.toFixed(1)}`);
+    code = code.replace(/^(y\s*:\s*)-?[\d.]+/m, `$1${y0.toFixed(1)}`);
+    code = code.replace(/^(lr\s*:\s*)-?[\d.]+/m, `$1${lr.toFixed(2)}`);
+    ta.value = code;
+    syncHighlight();
+}
+
+// ================================================================
+// DOM
+// ================================================================
+const cv = document.getElementById('cv');
+const ctx2 = cv.getContext('2d');
+const ta = document.getElementById('source-editor');
+const pre = document.getElementById('editor-highlight');
+const slLr = document.getElementById('sl-lr');
+const slX0 = document.getElementById('sl-x0');
+const slY0 = document.getElementById('sl-y0');
+const valLr = document.getElementById('val-lr');
+const valX0 = document.getElementById('val-x0');
+const valY0 = document.getElementById('val-y0');
+
+// ================================================================
+// CANVAS RESIZE
+// ================================================================
+function resizeCanvas() {
+    const dpr = window.devicePixelRatio || 1;
+    const wrap = cv.parentElement;
+    const w = wrap.clientWidth;
+    const h = wrap.clientHeight;
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+    ctx2.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+// ================================================================
+// 3D RENDERING (from grad.html)
+// ================================================================
+function draw() {
+    const dpr = window.devicePixelRatio || 1;
+    const W = cv.width / dpr;
+    const H = cv.height / dpr;
+    ctx2.clearRect(0, 0, W, H);
+
+    const R = curRange();
+    const cosA = Math.cos(az), sinA = Math.sin(az);
+    const cosE = Math.cos(el), sinE = Math.sin(el);
+    const scale = Math.min(W, H) * 0.11;
+    const cx = W / 2, cy = H * 0.65;
+
+    function proj(x, y, z) {
+        const rx = x * cosA - y * sinA;
+        const ry = x * sinA + y * cosA;
+        const ry2 = ry * cosE + z * sinE;
+        const rz = -ry * sinE + z * cosE;
+        return [cx + rx * scale, cy - ry2 * scale, rz];
+    }
+
+    // Compute max height for color mapping
+    let maxH = 1;
+    const step = (2 * R) / GRID;
+    for (let j = 0; j <= GRID; j += GRID) {
+        for (let i = 0; i <= GRID; i += GRID) {
+            const xv = -R + i * step, yv = -R + j * step;
+            const h = Math.abs(f(xv, yv));
+            if (isFinite(h) && h > maxH) maxH = h;
+        }
+    }
+    // Sample a few more points for better max estimate
+    for (let j = 0; j <= GRID; j += 4) {
+        for (let i = 0; i <= GRID; i += 4) {
+            const xv = -R + i * step, yv = -R + j * step;
+            const h = Math.abs(f(xv, yv));
+            if (isFinite(h) && h > maxH) maxH = h;
+        }
+    }
+    // Cap maxH for visual
+    const capH = Math.min(maxH, R * R * 4);
+
+    // Build quads
+    const quads = [];
+
+    // Surface quads
+    for (let j = 0; j < GRID; j++) {
+        for (let i = 0; i < GRID; i++) {
+            const x0v = -R + i * step, x1v = x0v + step;
+            const y0v = -R + j * step, y1v = y0v + step;
+            let z00 = f(x0v, y0v), z10 = f(x1v, y0v);
+            let z01 = f(x0v, y1v), z11 = f(x1v, y1v);
+            // Clamp for rendering
+            const zCap = capH * 1.2;
+            z00 = Math.max(-zCap, Math.min(zCap, z00));
+            z10 = Math.max(-zCap, Math.min(zCap, z10));
+            z01 = Math.max(-zCap, Math.min(zCap, z01));
+            z11 = Math.max(-zCap, Math.min(zCap, z11));
+            const c = [proj(x0v, y0v, z00), proj(x1v, y0v, z10),
+                       proj(x1v, y1v, z11), proj(x0v, y1v, z01)];
+            const avgZ = (c[0][2] + c[1][2] + c[2][2] + c[3][2]) / 4;
+            const avgH = (z00 + z10 + z01 + z11) / 4;
+            quads.push({ c, avgZ, avgH, type: 's' });
+        }
+    }
+
+    // Base plane grid (z=0)
+    const BASE_GRID = 6;
+    const bstep = (2 * R) / BASE_GRID;
+    for (let j = 0; j < BASE_GRID; j++) {
+        for (let i = 0; i < BASE_GRID; i++) {
+            const x0v = -R + i * bstep, x1v = x0v + bstep;
+            const y0v = -R + j * bstep, y1v = y0v + bstep;
+            const c = [proj(x0v, y0v, 0), proj(x1v, y0v, 0),
+                       proj(x1v, y1v, 0), proj(x0v, y1v, 0)];
+            const avgZ = (c[0][2] + c[1][2] + c[2][2] + c[3][2]) / 4;
+            quads.push({ c, avgZ, type: 'g' });
+        }
+    }
+
+    // Current point
+    const fVal = f(px, py);
+    const fClamped = Math.max(-capH * 1.2, Math.min(capH * 1.2, fVal));
+    const pBase = proj(px, py, 0);
+    const pSurf = proj(px, py, fClamped);
+    const pMidZ = (pBase[2] + pSurf[2]) / 2;
+
+    // Gradient arrow on z=0
+    const fn = curFn();
+    const gx = fn.gx(px, py), gy = fn.gy(px, py);
+    const gradMag = Math.sqrt(gx * gx + gy * gy);
+    const arrowScale = Math.min(1.0, 3.0 / (gradMag + 0.01));
+    // Arrow points in -gradient direction (descent)
+    const arrowEndX = px - gx * arrowScale;
+    const arrowEndY = py - gy * arrowScale;
+    const pArrowEnd = proj(arrowEndX, arrowEndY, 0);
+    const arrowMidZ = (pBase[2] + pArrowEnd[2]) / 2;
+
+    // Trail on surface
+    for (let ti = 0; ti < trail.length; ti++) {
+        const t = trail[ti];
+        const tf = f(t.x, t.y);
+        const tfClamped = Math.max(-capH * 1.2, Math.min(capH * 1.2, tf));
+        const pT = proj(t.x, t.y, tfClamped);
+        quads.push({ type: 'trail', idx: ti, px: pT[0], py: pT[1], avgZ: pT[2] + 0.005 });
+    }
+
+    // Trail line segments on surface
+    for (let ti = 1; ti < trail.length; ti++) {
+        const a = trail[ti - 1], b = trail[ti];
+        const fa = Math.max(-capH * 1.2, Math.min(capH * 1.2, f(a.x, a.y)));
+        const fb = Math.max(-capH * 1.2, Math.min(capH * 1.2, f(b.x, b.y)));
+        const pa = proj(a.x, a.y, fa), pb = proj(b.x, b.y, fb);
+        quads.push({ type: 'trailLine', ax: pa[0], ay: pa[1], bx: pb[0], by: pb[1],
+                      avgZ: (pa[2] + pb[2]) / 2 + 0.004, idx: ti });
+    }
+
+    quads.push({ type: 'line', avgZ: pMidZ });
+    quads.push({ type: 'arrow', avgZ: arrowMidZ });
+    quads.push({ type: 'pointBase', avgZ: pBase[2] + 0.01 });
+    quads.push({ type: 'pointSurf', avgZ: pSurf[2] + 0.01 });
+
+    // Painter's sort
+    quads.sort((a, b) => a.avgZ - b.avgZ);
+
+    for (const q of quads) {
+        if (q.type === 'g') {
+            ctx2.beginPath();
+            ctx2.moveTo(q.c[0][0], q.c[0][1]);
+            for (let k = 1; k < 4; k++) ctx2.lineTo(q.c[k][0], q.c[k][1]);
+            ctx2.closePath();
+            ctx2.fillStyle = 'rgba(255,255,255,0.02)';
+            ctx2.fill();
+            ctx2.strokeStyle = 'rgba(255,255,255,0.08)';
+            ctx2.lineWidth = 0.5;
+            ctx2.stroke();
+        } else if (q.type === 's') {
+            const t = Math.min(Math.abs(q.avgH) / capH, 1);
+            const r = Math.round(30 + t * 50);
+            const g = Math.round(120 + t * 40);
+            const bl = Math.round(200 + t * 55);
+            const alpha = 0.55 + t * 0.35;
+            ctx2.beginPath();
+            ctx2.moveTo(q.c[0][0], q.c[0][1]);
+            for (let k = 1; k < 4; k++) ctx2.lineTo(q.c[k][0], q.c[k][1]);
+            ctx2.closePath();
+            ctx2.fillStyle = `rgba(${r},${g},${bl},${alpha.toFixed(2)})`;
+            ctx2.fill();
+            ctx2.strokeStyle = 'rgba(0,0,0,0.15)';
+            ctx2.lineWidth = 0.3;
+            ctx2.stroke();
+        } else if (q.type === 'line') {
+            ctx2.setLineDash([4, 4]);
+            ctx2.strokeStyle = 'rgba(255,255,255,0.35)';
+            ctx2.lineWidth = 1;
+            ctx2.beginPath();
+            ctx2.moveTo(pBase[0], pBase[1]);
+            ctx2.lineTo(pSurf[0], pSurf[1]);
+            ctx2.stroke();
+            ctx2.setLineDash([]);
+        } else if (q.type === 'arrow') {
+            if (gradMag > 0.05) {
+                ctx2.strokeStyle = '#f0c040';
+                ctx2.lineWidth = 2.5;
+                ctx2.beginPath();
+                ctx2.moveTo(pBase[0], pBase[1]);
+                ctx2.lineTo(pArrowEnd[0], pArrowEnd[1]);
+                ctx2.stroke();
+                const dx = pArrowEnd[0] - pBase[0];
+                const dy = pArrowEnd[1] - pBase[1];
+                const len = Math.sqrt(dx * dx + dy * dy);
+                if (len > 1) {
+                    const ux = dx / len, uy = dy / len;
+                    const headLen = 10, headW = 5;
+                    ctx2.fillStyle = '#f0c040';
+                    ctx2.beginPath();
+                    ctx2.moveTo(pArrowEnd[0], pArrowEnd[1]);
+                    ctx2.lineTo(pArrowEnd[0] - ux * headLen + uy * headW,
+                                pArrowEnd[1] - uy * headLen - ux * headW);
+                    ctx2.lineTo(pArrowEnd[0] - ux * headLen - uy * headW,
+                                pArrowEnd[1] - uy * headLen + ux * headW);
+                    ctx2.closePath();
+                    ctx2.fill();
+                }
+            }
+        } else if (q.type === 'trailLine') {
+            const alpha = 0.15 + 0.5 * (q.idx / trail.length);
+            ctx2.strokeStyle = `rgba(240,192,64,${alpha.toFixed(2)})`;
+            ctx2.lineWidth = 1.5;
+            ctx2.beginPath();
+            ctx2.moveTo(q.ax, q.ay);
+            ctx2.lineTo(q.bx, q.by);
+            ctx2.stroke();
+        } else if (q.type === 'trail') {
+            const alpha = 0.15 + 0.6 * (q.idx / trail.length);
+            ctx2.beginPath();
+            ctx2.arc(q.px, q.py, 3, 0, Math.PI * 2);
+            ctx2.fillStyle = `rgba(240,192,64,${alpha.toFixed(2)})`;
+            ctx2.fill();
+        } else if (q.type === 'pointBase') {
+            ctx2.beginPath();
+            ctx2.arc(pBase[0], pBase[1], 5, 0, Math.PI * 2);
+            ctx2.fillStyle = '#fff';
+            ctx2.fill();
+            ctx2.beginPath();
+            ctx2.arc(pBase[0], pBase[1], 3, 0, Math.PI * 2);
+            ctx2.fillStyle = '#5e9cff';
+            ctx2.fill();
+        } else if (q.type === 'pointSurf') {
+            ctx2.shadowColor = '#f0883e';
+            ctx2.shadowBlur = 12;
+            ctx2.beginPath();
+            ctx2.arc(pSurf[0], pSurf[1], 6, 0, Math.PI * 2);
+            ctx2.fillStyle = '#f0883e';
+            ctx2.fill();
+            ctx2.shadowBlur = 0;
+            ctx2.strokeStyle = '#fff';
+            ctx2.lineWidth = 2;
+            ctx2.stroke();
+        }
+    }
+
+    // Axes
+    const o = proj(-R, -R, 0);
+    const axEnd = proj(R + 0.5, -R, 0);
+    const ayEnd = proj(-R, R + 0.5, 0);
+    const azEnd = proj(-R, -R, capH * 0.7);
+    ctx2.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx2.lineWidth = 1;
+    ctx2.beginPath(); ctx2.moveTo(o[0], o[1]); ctx2.lineTo(axEnd[0], axEnd[1]); ctx2.stroke();
+    ctx2.beginPath(); ctx2.moveTo(o[0], o[1]); ctx2.lineTo(ayEnd[0], ayEnd[1]); ctx2.stroke();
+    ctx2.beginPath(); ctx2.moveTo(o[0], o[1]); ctx2.lineTo(azEnd[0], azEnd[1]); ctx2.stroke();
+    ctx2.fillStyle = '#666';
+    ctx2.font = '12px SF Mono, Consolas, monospace';
+    ctx2.fillText('x', axEnd[0] + 6, axEnd[1] + 2);
+    ctx2.fillText('y', ayEnd[0] + 6, ayEnd[1] + 2);
+    ctx2.fillText('f', azEnd[0] + 6, azEnd[1] - 2);
+
+    // Update stats
+    updateStats();
+}
+
+// ================================================================
+// STATS
+// ================================================================
+function updateStats() {
+    const fVal = f(px, py);
+    const fn = curFn();
+    const gx = fn.gx(px, py), gy = fn.gy(px, py);
+    document.getElementById('stat-step').textContent = stepCount;
+    document.getElementById('stat-xy').textContent = px.toFixed(4) + ', ' + py.toFixed(4);
+    document.getElementById('stat-fxy').textContent = isFinite(fVal) ? fVal.toFixed(4) : 'overflow';
+    document.getElementById('stat-grad').textContent =
+        '[' + gx.toFixed(3) + ', ' + gy.toFixed(3) + ']';
+}
+
+// ================================================================
+// GD STEP
+// ================================================================
+function gdStep() {
+    trail.push({ x: px, y: py });
+    if (trail.length > 500) trail.shift();
+    const fn = curFn();
+    const gx = fn.gx(px, py), gy = fn.gy(px, py);
+    px = px - lr * gx;
+    py = py - lr * gy;
+    // Clamp to avoid divergence
+    const R = curRange();
+    px = Math.max(-R * 2, Math.min(R * 2, px));
+    py = Math.max(-R * 2, Math.min(R * 2, py));
+    stepCount++;
+}
+
+function doStep() {
+    gdStep();
+    draw();
+}
+
+function doReset() {
+    stopPlay();
+    px = x0; py = y0;
+    stepCount = 0;
+    trail = [];
+    draw();
+}
+
+function startPlay() {
+    if (playing) return;
+    playing = true;
+    document.getElementById('btn-play').textContent = 'Pause';
+    function tick() {
+        if (!playing) return;
+        gdStep();
+        draw();
+        animId = requestAnimationFrame(tick);
+    }
+    tick();
+}
+
+function stopPlay() {
+    playing = false;
+    document.getElementById('btn-play').textContent = 'Play';
+    if (animId) { cancelAnimationFrame(animId); animId = null; }
+}
+
+function togglePlay() {
+    if (playing) stopPlay();
+    else startPlay();
+}
+
+// ================================================================
+// MOUSE INTERACTION (from grad.html)
+// ================================================================
+function screenToXY(sx, sy) {
+    const dpr = window.devicePixelRatio || 1;
+    const W = cv.width / dpr, H = cv.height / dpr;
+    const R = curRange();
+    const scl = Math.min(W, H) * 0.11;
+    const cxs = W / 2, cys = H * 0.65;
+    const cosA = Math.cos(az), sinA = Math.sin(az);
+    const cosE = Math.cos(el);
+    const rx = (sx - cxs) / scl;
+    const ry2 = -(sy - cys) / scl;
+    const ry = ry2 / cosE;
+    const x = rx * cosA + ry * sinA;
+    const y = -rx * sinA + ry * cosA;
+    return [x, y];
+}
+
+cv.addEventListener('mousedown', (e) => {
+    lastMX = e.clientX; lastMY = e.clientY;
+    if (e.shiftKey || e.button === 2) {
+        rotating = true;
+        cv.style.cursor = 'grabbing';
+    } else {
+        dragging = true;
+    }
+});
+
+window.addEventListener('mousemove', (e) => {
+    if (rotating) {
+        az += (e.clientX - lastMX) * 0.008;
+        el = Math.max(0.15, Math.min(1.4, el - (e.clientY - lastMY) * 0.008));
+        lastMX = e.clientX; lastMY = e.clientY;
+        draw();
+    } else if (dragging) {
+        const rect = cv.getBoundingClientRect();
+        const R = curRange();
+        const [x, y] = screenToXY(e.clientX - rect.left, e.clientY - rect.top);
+        px = Math.max(-R, Math.min(R, x));
+        py = Math.max(-R, Math.min(R, y));
+        // Reset trail when manually dragging
+        trail = []; stepCount = 0;
+        draw();
+    }
+});
+
+window.addEventListener('mouseup', () => {
+    dragging = false; rotating = false;
+    cv.style.cursor = 'crosshair';
+});
+
+cv.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// Touch
+cv.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    const t = e.touches[0];
+    lastMX = t.clientX; lastMY = t.clientY;
+    if (e.touches.length === 2) rotating = true;
+    else dragging = true;
+}, { passive: false });
+
+cv.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    const t = e.touches[0];
+    if (rotating || e.touches.length === 2) {
+        az += (t.clientX - lastMX) * 0.008;
+        el = Math.max(0.15, Math.min(1.4, el - (t.clientY - lastMY) * 0.008));
+        rotating = true;
+    } else if (dragging) {
+        const rect = cv.getBoundingClientRect();
+        const R = curRange();
+        const [x, y] = screenToXY(t.clientX - rect.left, t.clientY - rect.top);
+        px = Math.max(-R, Math.min(R, x));
+        py = Math.max(-R, Math.min(R, y));
+        trail = []; stepCount = 0;
+    }
+    lastMX = t.clientX; lastMY = t.clientY;
+    draw();
+}, { passive: false });
+
+cv.addEventListener('touchend', () => { dragging = false; rotating = false; });
+
+// ================================================================
+// SLIDER EVENTS
+// ================================================================
+slLr.addEventListener('input', () => {
+    lr = parseFloat(slLr.value);
+    valLr.textContent = lr.toFixed(2);
+    updateCodeFromState();
+});
+slX0.addEventListener('input', () => {
+    x0 = parseFloat(slX0.value);
+    valX0.textContent = x0.toFixed(1);
+    updateCodeFromState();
+    doReset();
+});
+slY0.addEventListener('input', () => {
+    y0 = parseFloat(slY0.value);
+    valY0.textContent = y0.toFixed(1);
+    updateCodeFromState();
+    doReset();
+});
+
+// ================================================================
+// FUNCTION SELECTOR
+// ================================================================
+document.querySelectorAll('.fn-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        fnName = btn.dataset.fn;
+        document.querySelectorAll('.fn-btn').forEach(b => b.classList.toggle('active', b === btn));
+        // Regenerate dx source for new function
+        ta.value = makeDxSource();
+        syncHighlight();
+        doReset();
+    });
+});
+
+// ================================================================
+// BUTTON EVENTS
+// ================================================================
+document.getElementById('btn-step').addEventListener('click', doStep);
+document.getElementById('btn-play').addEventListener('click', togglePlay);
+document.getElementById('btn-reset').addEventListener('click', doReset);
+
+// ================================================================
+// CODE EDITING
+// ================================================================
+ta.addEventListener('input', () => {
+    syncHighlight();
+    parseCode();
+});
+ta.addEventListener('scroll', syncScroll);
+
+// ================================================================
+// INIT
+// ================================================================
+function init() {
+    ta.value = makeDxSource();
+    syncHighlight();
+    px = x0; py = y0;
+    resizeCanvas();
+    draw();
+}
+
+window.addEventListener('resize', () => { resizeCanvas(); draw(); });
+init();
+</script>
+</body>
+</html>

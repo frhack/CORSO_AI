@@ -1,0 +1,12 @@
+-- MNIST neural network in dx
+-- Two-layer fully connected network: 784 → 128 → 10
+
+type Net
+    w1 : Tensor[128 784]
+    b1 : Vec[128]
+    w2 : Tensor[10 128]
+    b2 : Vec[10]
+
+fun Net'apply(x: Vec[784]) -> Vec[10]
+    relu(me'w1 o x + me'b1)
+    softmax(me'w2 o it + me'b2)
