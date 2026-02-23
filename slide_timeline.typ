@@ -28,13 +28,14 @@
     (-3.2*sp,  "1974–93",  "Inverni dell'AI — promesse eccessive, hardware inadeguato",           grigio),
     (-4.4*sp,  "2012",     "AlexNet vince ImageNet — rivoluzione Deep Learning",                  viola),
     (-5.4*sp,  "2016",     "AlphaGo (DeepMind) batte il campione mondiale di Go",                viola),
-    (-6.6*sp,  "Nov 2022", "Lancio di ChatGPT — 100 milioni di utenti in 2 mesi",               rosso),
-    (-7.6*sp,  "Mag 2023", "Hinton lascia Google per avvertire sui rischi dell'AI",              rosso),
-    (-8.6*sp,  "Ott 2024", "Nobel per la Fisica a Geoffrey Hinton e John Hopfield",             rosso),
+    (-6.4*sp,  "2017",     "\"Attention Is All You Need\" — nasce il Transformer",               viola),
+    (-7.6*sp,  "Nov 2022", "Lancio di ChatGPT — 100 milioni di utenti in 2 mesi",               rosso),
+    (-8.6*sp,  "Mag 2023", "Hinton lascia Google per avvertire sui rischi dell'AI",              rosso),
+    (-9.6*sp,  "Ott 2024", "Nobel per la Fisica a Geoffrey Hinton e John Hopfield",             rosso),
   )
 
   let y-top = 0.5
-  let y-bot = -8.6 * sp - 0.5
+  let y-bot = -9.6 * sp - 0.5
 
   line((0, y-top), (0, y-bot), stroke: 2pt + luma(210))
 
